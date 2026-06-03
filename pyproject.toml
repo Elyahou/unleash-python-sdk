@@ -74,6 +74,10 @@ lint.ignore = ["E501", "PLR2004"]
 
 lint.fixable = ["I"]
 
+[tool.ruff.lint.per-file-ignores]
+# Randomized state/context generators branch heavily by design.
+"tests/differential/test_differential.py" = ["PLR0911", "PLR0912"]
+
 [tool.ruff.lint.pylint]
 max-args = 25
 

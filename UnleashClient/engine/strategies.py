@@ -159,13 +159,15 @@ def apply_flexible_rollout(
     percentage = _to_int(strategy.parameters.get("rollout"))
     if percentage <= 0:
         return False
-    if percentage >= 100:
-        # Short-circuit: 100% is always on, no hashing required.
-        return True
 
     group_id = strategy.parameters.get("groupId", "")
     stickiness = strategy.parameters.get("stickiness") or "default"
 
+    # Resolve the sticky identifier BEFORE any 100% short-circuit: a named
+    # stickiness field (custom, or explicit userId/sessionId) that is missing
+    # from the context disables the strategy at ANY rollout — the native
+    # engine never hashes an absent identifier. Only "default" and "random"
+    # may fall back to a random assignment.
     if stickiness == "default":
         if "userId" in context:
             identifier = context["userId"]
@@ -177,13 +179,16 @@ def apply_flexible_rollout(
     elif stickiness == "random":
         return random.randint(1, 100) <= percentage
     else:
-        # Custom stickiness field. A missing value disables the strategy
+        # Named stickiness field. A missing value disables the strategy
         # entirely (the native engine does not hash an absent identifier).
         value = get_context_value(context, stickiness)
         if value is None:
             return False
         identifier = value
 
+    if percentage >= 100:
+        # 100% is always on once a sticky identifier resolved.
+        return True
     return normalized_hash(group_id, identifier) <= percentage
 
 

@@ -431,8 +431,10 @@ def test_flexible_rollout_custom_stickiness_missing_field_deterministic(
     assert results == {False}
 
 
-def test_flexible_rollout_custom_stickiness_100_always_on(patch_hash, empty_state):
-    # spec 12: stickiness_100 always enabled even without the custom field.
+def test_flexible_rollout_custom_stickiness_100_field_present(patch_hash, empty_state):
+    # spec 12: stickiness_100 enabled when the custom field IS supplied.
+    # NB: the spec test's description says "without field defined" but its
+    # context actually provides customField — do not trust the prose.
     grp = "Feature.flexible.rollout.custom.stickiness_100"
     s = _strategy(
         "flexibleRollout",
@@ -444,6 +446,52 @@ def test_flexible_rollout_custom_stickiness_100_always_on(patch_hash, empty_stat
         )
         is True
     )
+
+
+def test_flexible_rollout_custom_stickiness_100_missing_field(patch_hash, empty_state):
+    # Yggdrasil parity (caught by production differential testing): a custom
+    # stickiness field missing from the context disables the strategy even at
+    # rollout=100 — the 100% short-circuit must not bypass identifier
+    # resolution.
+    s = _strategy(
+        "flexibleRollout",
+        {"rollout": "100", "stickiness": "company_id", "groupId": "g"},
+    )
+    assert strategies.apply_flexible_rollout(s, {}, empty_state) is False
+    assert (
+        strategies.apply_flexible_rollout(s, {"properties": {}}, empty_state) is False
+    )
+    assert (
+        strategies.apply_flexible_rollout(
+            s, {"userId": "u1", "properties": {}}, empty_state
+        )
+        is False
+    )
+
+
+def test_flexible_rollout_explicit_userid_stickiness_100_missing_user(
+    patch_hash, empty_state
+):
+    # Yggdrasil parity: explicit "userId" stickiness is a named field, not
+    # "default" — a missing userId disables the strategy even at rollout=100.
+    s = _strategy(
+        "flexibleRollout",
+        {"rollout": "100", "stickiness": "userId", "groupId": "g"},
+    )
+    assert strategies.apply_flexible_rollout(s, {}, empty_state) is False
+
+
+def test_flexible_rollout_default_and_random_stickiness_100_empty_context(
+    patch_hash, empty_state
+):
+    # Yggdrasil parity guard: "default" and "random" stickiness DO fall back
+    # to a random hash, which always passes at rollout=100.
+    for stickiness in ("default", "random"):
+        s = _strategy(
+            "flexibleRollout",
+            {"rollout": "100", "stickiness": stickiness, "groupId": "g"},
+        )
+        assert strategies.apply_flexible_rollout(s, {}, empty_state) is True
 
 
 # ---------------------------------------------------------------------------

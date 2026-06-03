@@ -760,3 +760,39 @@ def test_numeric_whitespace_underscore_parity() -> None:
             value,
             ctx_val,
         )
+
+
+def test_flexible_rollout_missing_named_stickiness_parity() -> None:
+    # Caught by differential testing against a real production payload: a
+    # NAMED stickiness field (custom, or explicit userId/sessionId) missing
+    # from the context disables flexibleRollout at ANY rollout — including
+    # 100%, which must not short-circuit past identifier resolution. The
+    # random corpus can't cover this because ``_gen_context`` always supplies
+    # every stickiness field (absent fields make *variant* selection
+    # non-deterministic), so this deterministic case lives here.
+    for stickiness in ("customField", "tier", "userId", "sessionId"):
+        for rollout in ("1", "50", "99", "100"):
+            state = {
+                "version": 2,
+                "features": [
+                    {
+                        "name": "f",
+                        "enabled": True,
+                        "strategies": [
+                            {
+                                "name": "flexibleRollout",
+                                "parameters": {
+                                    "rollout": rollout,
+                                    "stickiness": stickiness,
+                                    "groupId": "f",
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+            for ctx in ({}, {"properties": {}}, {"appName": "x", "properties": {}}):
+                expected = _ygg_is_enabled(state, "f", ctx)
+                actual = _emb_is_enabled(state, "f", ctx)
+                assert expected is False, (stickiness, rollout, ctx, expected)
+                assert actual == expected, (stickiness, rollout, ctx)
