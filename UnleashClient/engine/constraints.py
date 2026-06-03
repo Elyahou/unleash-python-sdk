@@ -44,13 +44,6 @@ import re
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
-from dateutil.parser import parse as _parse_date
-
-try:  # dateutil >= 2.8 raises a dedicated ParserError
-    from dateutil.parser import ParserError as _DateParserError
-except ImportError:  # pragma: no cover - older dateutil
-    _DateParserError = ValueError  # type: ignore[assignment, misc]
-
 import semver
 
 from UnleashClient.engine.state import ConstraintDef
@@ -198,14 +191,36 @@ def _match_numeric(  # noqa: PLR0911
 
 
 def _to_aware_datetime(value: Any) -> Optional[datetime]:
-    """Parse ``value`` into a timezone-aware datetime (naive assumed UTC)."""
+    """Parse ``value`` into a timezone-aware datetime, RFC3339-strict.
+
+    The native engine (chrono ``DateTime::parse_from_rfc3339``) only accepts a
+    full RFC3339 timestamp: a ``T``-separated date and time *with* an explicit
+    timezone offset (``Z`` or ``±hh:mm``). Anything looser — a date-only string,
+    a space separator, a missing offset, or non-date garbage such as ``"42.57"``
+    / ``"15"`` — is a non-match. We mirror that strictness (a permissive parser
+    like ``dateutil`` would coerce ``"42.57"`` into a year and diverge).
+
+    A real ``datetime`` instance (e.g. the substituted ``currentTime`` "now") is
+    accepted as-is, with a naive value assumed to be UTC.
+    """
     if isinstance(value, datetime):
         parsed = value
-    else:
-        try:
-            parsed = _parse_date(value)
-        except (_DateParserError, ValueError, TypeError, OverflowError):
+    elif isinstance(value, str):
+        # Require an explicit timezone: chrono's RFC3339 parser rejects naive
+        # timestamps. ``fromisoformat`` accepts date-only and space-separated
+        # forms that chrono refuses, so we additionally require a ``T``/``t``
+        # separator and a resulting non-None tzinfo.
+        if "T" not in value and "t" not in value:
             return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return None
+    else:
+        return None
+
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed

@@ -68,9 +68,29 @@ def dependencies_satisfied(
         if parent_enabled != dependency.enabled:
             return False
 
-        # Variant matching only applies when the parent is expected enabled.
-        if dependency.variants and dependency.enabled:
+        # Variant matching only applies when the parent is expected enabled and
+        # actually defines variants somewhere (feature-level OR on any strategy).
+        # When the parent defines no variants at all, the dependency's variant
+        # constraint is ignored (matching the native engine: there is nothing to
+        # compare against, so the dependency is satisfied).
+        if (
+            dependency.variants
+            and dependency.enabled
+            and _parent_has_variants(parent)
+        ):
             if parent_variant is None or parent_variant.name not in dependency.variants:
                 return False
 
     return True
+
+
+def _parent_has_variants(parent: FeatureState) -> bool:
+    """Whether ``parent`` defines any variants (feature-level or on a strategy).
+
+    Strategy-level variants count: a parent whose only variants live inside its
+    enabling strategy still participates in dependency variant matching (spec
+    ``17-dependent-features``).
+    """
+    if parent.variants:
+        return True
+    return any(strategy.variants for strategy in parent.strategies)

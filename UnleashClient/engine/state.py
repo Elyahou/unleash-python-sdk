@@ -25,7 +25,7 @@ import ipaddress
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Pattern, Tuple
 
 try:  # pragma: no cover - import shim
@@ -33,7 +33,26 @@ try:  # pragma: no cover - import shim
 except ImportError:  # pragma: no cover
     from semver.version import Version as _SemverVersion  # type: ignore
 
-from dateutil.parser import parse as _parse_date
+
+def _parse_rfc3339(value: str) -> Optional[datetime]:
+    """Parse an RFC3339 timestamp the way chrono does (strict).
+
+    Requires a ``T``-separated date/time with an explicit timezone offset
+    (``Z`` or ``±hh:mm``). Returns ``None`` for anything looser, so a constraint
+    value like a date-only string or non-date garbage is reported as unparseable
+    rather than silently coerced (a lenient parser would diverge from the native
+    engine). Mirrors :func:`UnleashClient.engine.constraints._to_aware_datetime`.
+    """
+    if "T" not in value and "t" not in value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed
+
 
 # ---------------------------------------------------------------------------
 # Constraint model
@@ -373,12 +392,10 @@ def _parse_constraint(  # noqa: PLR0912
                 )
     elif operator in _DATE_OPERATORS:
         if value is not None:
-            try:
-                parsed = _parse_date(value)
-                if parsed.tzinfo is None:
-                    parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = _parse_rfc3339(value) if isinstance(value, str) else None
+            if parsed is not None:
                 constraint.parsed_date = parsed
-            except (TypeError, ValueError, OverflowError):
+            else:
                 warnings.append(f"{where}: unparseable date constraint value {value!r}")
     elif operator in _STR_LIST_OPERATORS:
         if case_insensitive:
@@ -446,6 +463,13 @@ def _parse_strategy(
     name = raw["name"]
     parameters = dict(raw.get("parameters") or {})
     segment_ids = [int(s) for s in raw.get("segments") or []]
+
+    # The native engine substitutes the feature name as the default ``groupId``
+    # when a strategy omits one entirely (used both for the rollout enabling hash
+    # and for strategy-variant bucketing). An explicit ``groupId`` — including an
+    # empty string — is left untouched.
+    if "groupId" not in parameters:
+        parameters["groupId"] = feature_name
 
     own_constraints = [
         _parse_constraint(c, warnings, f"feature {feature_name}")

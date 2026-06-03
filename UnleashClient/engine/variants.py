@@ -12,7 +12,7 @@ Selects the variant for a feature given a context, handling:
 * payload passthrough and the ``feature_enabled`` / ``enabled`` flags on the
   returned variant.
 
-The returned :class:`Variant` is the drop-in replacement for the yggdrasil
+The returned :class:`Variant` is the drop-in replacement for the native engine's
 ``Variant`` dataclass: the SDK consumes it via ``dataclasses.asdict`` and reads
 the keys ``name``, ``payload``, ``enabled`` and ``feature_enabled``.
 """
@@ -34,7 +34,7 @@ from UnleashClient.engine.state import (
 
 @dataclass
 class Variant:
-    """Result of variant selection — shape-compatible with yggdrasil's ``Variant``.
+    """Result of variant selection — shape-compatible with the native ``Variant``.
 
     The SDK serializes this via ``asdict`` and drops ``None`` values, so field
     names must match exactly:
@@ -193,12 +193,20 @@ def _evaluate_feature(
     context: dict,
     state: EngineState,
 ) -> tuple:
-    """Resolve feature-enabled state and the matched enabling strategy.
+    """Resolve feature-enabled state and the variant-driving strategy.
 
     Returns ``(feature_enabled, matched_strategy)`` where ``matched_strategy`` is
-    the first strategy that granted access (or ``None`` when the feature has no
-    strategies / is disabled). Strategy and dependency evaluation are delegated
-    to the sibling modules so the variant module stays free of evaluation logic.
+    the strategy whose variants drive variant selection: the **first matched
+    strategy that itself declares variants**, falling back to the first matched
+    strategy when none of the matched strategies have variants (in which case
+    feature-level variants apply). Returns ``(True, None)`` for a feature with no
+    strategies and ``(False, None)`` when disabled / no strategy matched.
+
+    Matching the native engine: with OR-of-strategies, a matched strategy that
+    carries variants is preferred over an earlier matched strategy that does not,
+    so strategy variants win over feature variants whenever *any* enabling
+    strategy defines them. Strategy and dependency evaluation are delegated to
+    the sibling modules so the variant module stays free of evaluation logic.
     """
     # Imported lazily to break the import cycle: ``dependencies`` and
     # ``strategies`` both import from this module.
@@ -217,9 +225,17 @@ def _evaluate_feature(
         # No strategies => enabled (not expressible via the UI, but defined).
         return True, None
 
+    first_matched: Optional[StrategyDef] = None
     for strategy in feature.strategies:
         if evaluate_strategy(strategy, context, state):
-            return True, strategy
+            if strategy.variants:
+                # First matched strategy that carries variants wins outright.
+                return True, strategy
+            if first_matched is None:
+                first_matched = strategy
+
+    if first_matched is not None:
+        return True, first_matched
 
     return False, None
 
@@ -269,9 +285,12 @@ def select_variant(
     # feature variants; otherwise fall back to feature-level variants.
     if matched_strategy is not None and matched_strategy.variants:
         group = _strategy_group(matched_strategy, feature)
-        # Strategy-level variants inherit the strategy's stickiness (spec
-        # ``16-strategy-variants``), not any per-variant stickiness field.
-        strategy_stickiness = matched_strategy.parameters.get("stickiness")
+        # Strategy-level variants inherit the *strategy's* stickiness (spec
+        # ``16-strategy-variants``), not any per-variant ``stickiness`` field.
+        # When the strategy declares no stickiness parameter the resolution
+        # falls back to ``"default"`` (userId -> sessionId -> ...), matching the
+        # native engine — which ignores the per-variant stickiness entirely.
+        strategy_stickiness = matched_strategy.parameters.get("stickiness") or "default"
         return select_from_variants(
             matched_strategy.variants,
             group,
@@ -290,8 +309,13 @@ def select_variant(
 
 
 def _strategy_group(strategy: StrategyDef, feature: FeatureState) -> str:
-    """Hash group for strategy variants: the strategy ``groupId`` or feature name."""
+    """Hash group for strategy variants.
+
+    The strategy's ``groupId`` is used as-is *when present* — including an empty
+    string, which the native engine hashes on literally. Only a wholly absent
+    ``groupId`` falls back to the feature name.
+    """
     group_id = strategy.parameters.get("groupId")
-    if group_id:
-        return group_id
-    return feature.name
+    if group_id is None:
+        return feature.name
+    return group_id

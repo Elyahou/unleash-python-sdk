@@ -1,6 +1,6 @@
 """Toggle/variant metrics bucket for the embedded engine.
 
-Mirrors the yggdrasil metrics bucket consumed by
+Mirrors the native engine's metrics bucket consumed by
 ``periodic_tasks/send_metrics.py``. The bucket shape returned by ``snapshot``
 is::
 

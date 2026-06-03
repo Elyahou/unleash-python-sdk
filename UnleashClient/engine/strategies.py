@@ -73,9 +73,11 @@ def apply_user_with_id(
         return False
 
     raw = strategy.parameters.get("userIds")
-    if not raw:
+    if raw is None:
         return False
 
+    # ``"".split(",")`` yields ``[""]``, a matchable empty token: a context
+    # ``userId`` of ``""`` matches a ``userIds`` of ``""`` (native-engine parity).
     user_ids = [x.strip() for x in raw.split(",")]
     return user_id in user_ids
 
@@ -143,7 +145,7 @@ def apply_flexible_rollout(
     * ``random``  -> a random hash;
     * any other value is a custom context field name -> resolved via
       :func:`constraints.get_context_value` (top-level then ``properties``). A
-      missing value disables the strategy (matching yggdrasil: the empty
+      missing value disables the strategy (matching the native engine: the empty
       identifier is *not* hashed — absent stickiness means no rollout).
 
     Note ``userId`` / ``sessionId`` are not special keywords here; they fall
@@ -173,7 +175,7 @@ def apply_flexible_rollout(
         return random.randint(1, 100) <= percentage
     else:
         # Custom stickiness field. A missing value disables the strategy
-        # entirely (yggdrasil does not hash an absent identifier).
+        # entirely (the native engine does not hash an absent identifier).
         value = get_context_value(context, stickiness)
         if value is None:
             return False

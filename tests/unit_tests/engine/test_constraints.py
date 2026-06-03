@@ -439,11 +439,14 @@ class TestDateOperators:
         )
         assert evaluate_constraint(con, {"currentTime": "not-a-date"}) is False
 
-    def test_date_naive_context_assumed_utc(self):
+    def test_date_naive_context_rejected(self):
+        # The native engine (chrono RFC3339) rejects a timezone-less context
+        # timestamp: it is unparseable, so the constraint is a non-match. (A
+        # lenient parser would assume UTC and diverge from the oracle.)
         con = c(
             "DATE_AFTER", context_name="currentTime", value="2022-01-29T13:00:00.000Z"
         )
-        assert evaluate_constraint(con, {"currentTime": "2022-01-30T13:00:00"}) is True
+        assert evaluate_constraint(con, {"currentTime": "2022-01-30T13:00:00"}) is False
 
 
 # ---------------------------------------------------------------------------

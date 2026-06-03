@@ -1,8 +1,7 @@
 """Embedded pure-Python evaluation engine.
 
-``UnleashEngine`` is a drop-in replacement for
-``yggdrasil_engine.engine.UnleashEngine``, exposing exactly the API surface the
-SDK uses. It holds no native binary and never serializes the context to JSON on
+``UnleashEngine`` is a drop-in replacement for the previously used native
+engine, exposing exactly the API surface the SDK uses. It holds no native binary and never serializes the context to JSON on
 the evaluation path: state is pre-compiled once in :meth:`take_state` and every
 ``is_enabled`` / ``get_variant`` call operates on plain dicts in-process.
 
@@ -40,7 +39,7 @@ __all__ = ["UnleashEngine", "Variant", "FeatureDefinition"]
 
 
 class UnleashEngine:
-    """Pure-Python feature evaluation engine (drop-in for yggdrasil's)."""
+    """Pure-Python feature evaluation engine (drop-in for the native engine)."""
 
     def __init__(self) -> None:
         """Construct an engine with empty state.
@@ -58,7 +57,7 @@ class UnleashEngine:
 
         :param state_json: Raw ClientFeatures JSON (flat or delta-event form).
         :return: A newline-joined warnings string for unparseable entries, or
-            ``None`` when there are no warnings (matching yggdrasil).
+            ``None`` when there are no warnings (matching the native engine).
         """
         prior_raw = self._state.raw if self._state is not None else None
         self._state, warnings = parse_client_features(state_json, prior_raw)
@@ -94,7 +93,7 @@ class UnleashEngine:
 
         :param toggle_name: The feature name.
         :param context: The evaluation context (a plain dict).
-        :return: A :class:`Variant` (``asdict``-compatible with yggdrasil's), or
+        :return: A :class:`Variant` (``asdict``-compatible with the native one), or
             ``None`` when the toggle is unknown.
         """
         feature = self._state.get_feature(toggle_name)
