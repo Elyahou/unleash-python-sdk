@@ -17,7 +17,7 @@ The variant contract under test:
 * overrides take precedence over weighting;
 * strategy-level variants (from the matched enabling strategy) take precedence
   over feature-level variants; fall back to feature variants when absent;
-* stickiness: ``default`` (userId -> sessionId -> remoteAddress -> random),
+* stickiness: ``default`` (userId -> sessionId -> random),
   ``random``, and custom context fields (top-level or under ``properties``);
 * payload passthrough and the ``enabled`` / ``feature_enabled`` flags.
 """
@@ -520,8 +520,9 @@ class TestOverrides:
         )
         assert v.name == "a"
 
-    def test_last_matching_override_wins(self):
-        # Two variants both override on userId=5; the LAST one wins (legacy parity).
+    def test_first_matching_override_wins(self):
+        # Two variants both override on userId=5; the FIRST one wins, matching
+        # the native engine (yggdrasil returns the first matching override).
         variants = [
             VariantDef(
                 name="a",
@@ -537,7 +538,7 @@ class TestOverrides:
             ),
         ]
         v = select_from_variants(variants, "g", {"userId": "5"}, feature_enabled=True)
-        assert v.name == "b"
+        assert v.name == "a"
 
 
 # ===========================================================================
@@ -755,6 +756,25 @@ class TestStickiness:
         )
         assert both.name == user_only.name
 
+    def test_default_stickiness_ignores_remote_address(self):
+        # The native engine's default variant stickiness considers only userId
+        # then sessionId, then random — it does NOT key on remoteAddress. With a
+        # context carrying only remoteAddress the selection must fall through to
+        # the random branch (not be deterministically keyed on remoteAddress).
+        variants = [
+            VariantDef(name="a", weight=1, cumulative_weight=1),
+            VariantDef(name="b", weight=1, cumulative_weight=2),
+        ]
+        seen = set()
+        for _ in range(2000):
+            v = select_from_variants(
+                variants, "g", {"remoteAddress": "10.0.0.0"}, feature_enabled=True
+            )
+            seen.add(v.name)
+        # Random fallback exercises both variants across many calls; a
+        # remoteAddress-keyed selection would deterministically return one.
+        assert seen == {"a", "b"}
+
     def test_random_stickiness_still_returns_a_variant(self):
         variants = [
             VariantDef(name="a", weight=1, cumulative_weight=1, stickiness="random"),
@@ -765,7 +785,7 @@ class TestStickiness:
         assert v.enabled is True
 
     def test_default_stickiness_no_identifier_random_fallback(self):
-        # No userId/sessionId/remoteAddress -> random fallback, still a variant.
+        # No userId/sessionId -> random fallback, still a variant.
         variants = [
             VariantDef(name="a", weight=1, cumulative_weight=1),
             VariantDef(name="b", weight=1, cumulative_weight=2),

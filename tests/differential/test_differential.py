@@ -597,3 +597,162 @@ def test_differential_parity(state_idx: int) -> None:
         report = f"\n\n{len(distinct)} distinct mismatch(es) in state #{state_idx}:\n\n"
         report += "\n\n----\n\n".join(distinct)
         pytest.fail(report)
+
+
+# --------------------------------------------------------------------------- #
+# Targeted regression cases for confirmed parity findings the random corpus
+# deliberately scopes out (overlapping overrides, semver build metadata,
+# remoteAddress-only variant stickiness, whitespace/underscore numerics).
+# Each asserts the embedded engine matches yggdrasil exactly.
+# --------------------------------------------------------------------------- #
+
+
+def _ygg_is_enabled(state: Dict[str, Any], name: str, ctx: Dict[str, Any]) -> Any:
+    ygg = YggEngine()
+    ygg.take_state(json.dumps(state))
+    return ygg.is_enabled(name, dict(ctx))
+
+
+def _emb_is_enabled(state: Dict[str, Any], name: str, ctx: Dict[str, Any]) -> Any:
+    emb = EmbeddedEngine()
+    emb.take_state(json.dumps(state))
+    return emb.is_enabled(name, dict(ctx))
+
+
+def _ygg_variant(state: Dict[str, Any], name: str, ctx: Dict[str, Any]) -> Any:
+    ygg = YggEngine()
+    ygg.take_state(json.dumps(state))
+    return _normalize_variant(ygg.get_variant(name, dict(ctx)))
+
+
+def _emb_variant(state: Dict[str, Any], name: str, ctx: Dict[str, Any]) -> Any:
+    emb = EmbeddedEngine()
+    emb.take_state(json.dumps(state))
+    return _normalize_variant(emb.get_variant(name, dict(ctx)))
+
+
+def test_overlapping_variant_overrides_first_match_wins() -> None:
+    # Two variants both override on the same contextName/value: yggdrasil returns
+    # the FIRST matching override. (Random corpus never generates overlap.)
+    state = {
+        "version": 2,
+        "features": [
+            {
+                "name": "feat",
+                "enabled": True,
+                "strategies": [{"name": "default"}],
+                "variants": [
+                    {
+                        "name": "a",
+                        "weight": 500,
+                        "overrides": [{"contextName": "u", "values": ["x"]}],
+                    },
+                    {
+                        "name": "b",
+                        "weight": 500,
+                        "overrides": [{"contextName": "u", "values": ["x"]}],
+                    },
+                ],
+            }
+        ],
+    }
+    for uid in range(20):
+        ctx = {"userId": str(uid), "properties": {"u": "x"}}
+        assert _emb_variant(state, "feat", ctx) == _ygg_variant(state, "feat", ctx)
+
+
+def test_semver_build_metadata_parity() -> None:
+    cases = [
+        ("SEMVER_EQ", "1.2.3", "1.2.3+build"),
+        ("SEMVER_GT", "1.2.3", "1.2.3+build"),
+        ("SEMVER_LTE", "1.2.3", "1.2.3+build"),
+        ("SEMVER_GTE", "1.2.3+build", "1.2.3"),
+        ("SEMVER_GT", "1.2.3+2", "1.2.3+10"),
+        ("SEMVER_GT", "1.2.3+1", "1.2.3+a"),
+    ]
+    for op, value, ctx_val in cases:
+        state = {
+            "version": 2,
+            "features": [
+                {
+                    "name": "f",
+                    "enabled": True,
+                    "strategies": [
+                        {
+                            "name": "default",
+                            "constraints": [
+                                {"contextName": "ver", "operator": op, "value": value}
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        ctx = {"properties": {"ver": ctx_val}}
+        assert _emb_is_enabled(state, "f", ctx) == _ygg_is_enabled(state, "f", ctx), (
+            op,
+            value,
+            ctx_val,
+        )
+
+
+def test_variant_default_stickiness_ignores_remote_address() -> None:
+    # Context carries only remoteAddress: yggdrasil ignores it for default
+    # variant stickiness and randomizes; the embedded engine must NOT key on it.
+    state = {
+        "version": 2,
+        "features": [
+            {
+                "name": "f",
+                "enabled": True,
+                "strategies": [{"name": "default"}],
+                "variants": [
+                    {"name": "a", "weight": 500, "stickiness": "default"},
+                    {"name": "b", "weight": 500, "stickiness": "default"},
+                ],
+            }
+        ],
+    }
+    emb_seen = set()
+    for octet in range(256):
+        ctx = {"remoteAddress": f"10.0.0.{octet}"}
+        emb_seen.add(_emb_variant(state, "f", ctx)["name"])
+    # The embedded engine must exercise the random fallback (both variants),
+    # exactly like yggdrasil — not deterministically key on remoteAddress.
+    assert emb_seen == {"a", "b"}
+
+
+def test_numeric_whitespace_underscore_parity() -> None:
+    cases = [
+        ("NUM_EQ", "3", "  3 "),
+        ("NUM_EQ", "3", "3\n"),
+        ("NUM_EQ", "1000", "1_000"),
+        ("NUM_EQ", "3", " 3"),
+        ("NUM_EQ", "3", "3 "),
+        ("NUM_EQ", "3", "3"),
+        ("NUM_GT", "1", "3.5"),
+    ]
+    for op, value, ctx_val in cases:
+        state = {
+            "version": 2,
+            "features": [
+                {
+                    "name": "f",
+                    "enabled": True,
+                    "strategies": [
+                        {
+                            "name": "default",
+                            "constraints": [
+                                {"contextName": "n", "operator": op, "value": value}
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        ctx = {"properties": {"n": ctx_val}}
+        assert _emb_is_enabled(state, "f", ctx) == _ygg_is_enabled(state, "f", ctx), (
+            op,
+            value,
+            ctx_val,
+        )

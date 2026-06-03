@@ -162,6 +162,43 @@ def _match_string(constraint: ConstraintDef, context_value: Any) -> bool:
     return any(ctx.endswith(v) for v in values)
 
 
+# Rust's ``f64::from_str`` grammar (used by yggdrasil for NUM_* context values):
+# optional sign, then either ``inf``/``infinity``/``nan`` (case-insensitive) or a
+# decimal number requiring at least one digit on at least one side of the dot,
+# with an optional exponent. Crucially it rejects surrounding whitespace,
+# underscores, a bare leading dot (``.5``), thousands separators and non-ASCII
+# digits — all of which Python's ``float()`` would accept and silently diverge.
+_RUST_F64_RE = re.compile(
+    r"[+-]?(?:inf(?:inity)?|nan|(?:[0-9]+(?:\.[0-9]*)?|[0-9]*\.[0-9]+)(?:[eE][+-]?[0-9]+)?)\Z",
+    re.IGNORECASE,
+)
+
+
+def _rust_parse_f64(value: Any) -> Optional[float]:
+    """Parse a context value the way Rust's ``f64::from_str`` does.
+
+    Returns ``None`` when Rust would reject the input, so the embedded engine
+    matches yggdrasil for whitespace-/underscore-padded or otherwise non-Rust
+    numeric strings instead of silently coercing them via Python ``float()``.
+    Real ``int``/``float`` values are accepted directly.
+    """
+    if isinstance(value, bool):
+        # bool is a subclass of int but is never a numeric context value.
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str):
+        return None
+    # ``[0-9]`` (not ``\d``) and the explicit grammar exclude underscores,
+    # surrounding whitespace and non-ASCII digits that ``float()`` would accept.
+    if not _RUST_F64_RE.match(value):
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
 def _match_numeric(  # noqa: PLR0911
     constraint: ConstraintDef, context_value: Any
 ) -> bool:
@@ -172,9 +209,8 @@ def _match_numeric(  # noqa: PLR0911
         except (TypeError, ValueError):
             return False
 
-    try:
-        ctx = float(context_value)
-    except (TypeError, ValueError):
+    ctx = _rust_parse_f64(context_value)
+    if ctx is None:
         return False
 
     op = constraint.operator
@@ -254,6 +290,66 @@ def _parse_semver(value: Any) -> Optional[semver.Version]:
         return None
 
 
+def _compare_build_identifiers(a: str, b: str) -> int:  # noqa: PLR0911
+    """Compare two build-metadata strings the way Rust's ``semver`` crate does.
+
+    The Rust crate (yggdrasil's oracle) participates build metadata in ordering,
+    unlike SemVer §10 / python-semver which ignore it. It applies the §11
+    prerelease comparison rules to the dot-separated build identifiers:
+
+    * a non-empty build sorts **above** an empty build;
+    * identifiers are compared left to right;
+    * purely-numeric identifiers compare numerically and rank **below**
+      alphanumeric identifiers; alphanumeric identifiers compare ASCII-lexically;
+    * when all shared identifiers are equal, the longer identifier list is
+      greater.
+
+    Returns ``-1`` / ``0`` / ``1`` for ``a`` <, ==, > ``b``.
+    """
+    if a == b:
+        return 0
+    # Empty build sorts below any non-empty build.
+    if not a:
+        return -1
+    if not b:
+        return 1
+
+    a_parts = a.split(".")
+    b_parts = b.split(".")
+    for ap, bp in zip(a_parts, b_parts):
+        if ap == bp:
+            continue
+        a_num = ap.isdigit() and (ap == "0" or not ap.startswith("0"))
+        b_num = bp.isdigit() and (bp == "0" or not bp.startswith("0"))
+        if a_num and b_num:
+            ai, bi = int(ap), int(bp)
+            if ai != bi:
+                return -1 if ai < bi else 1
+        elif a_num != b_num:
+            # Numeric identifiers always have lower precedence than alphanumeric.
+            return -1 if a_num else 1
+        else:
+            return -1 if ap < bp else 1
+    # All shared identifiers equal: the longer list is greater.
+    if len(a_parts) != len(b_parts):
+        return -1 if len(a_parts) < len(b_parts) else 1
+    return 0
+
+
+def _compare_semver(ctx: semver.Version, target: semver.Version) -> int:
+    """Three-way semver comparison matching yggdrasil's Rust ``semver`` crate.
+
+    python-semver's own comparison correctly orders major/minor/patch and
+    prerelease but *ignores* build metadata. The Rust crate orders build
+    metadata too, so when the core comparison is equal we break the tie on the
+    build metadata via :func:`_compare_build_identifiers`.
+    """
+    core = ctx.compare(target)
+    if core != 0:
+        return core
+    return _compare_build_identifiers(ctx.build or "", target.build or "")
+
+
 def _match_semver(  # noqa: PLR0911
     constraint: ConstraintDef, context_value: Any
 ) -> bool:
@@ -267,17 +363,19 @@ def _match_semver(  # noqa: PLR0911
     if ctx is None:
         return False
 
+    cmp = _compare_semver(ctx, target)
+
     op = constraint.operator
     if op == "SEMVER_EQ":
-        return ctx == target
+        return cmp == 0
     if op == "SEMVER_GT":
-        return ctx > target
+        return cmp > 0
     if op == "SEMVER_GTE":
-        return ctx >= target
+        return cmp >= 0
     if op == "SEMVER_LT":
-        return ctx < target
+        return cmp < 0
     # SEMVER_LTE
-    return ctx <= target
+    return cmp <= 0
 
 
 def _translate_posix_classes(pattern: str) -> str:

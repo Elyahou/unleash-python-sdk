@@ -74,8 +74,9 @@ def _context_value(context: dict, context_name: str) -> Optional[str]:
 def _resolve_stickiness_seed(context: dict, stickiness: Optional[str]) -> str:
     """Compute the stickiness identifier used to hash a variant selection.
 
-    * ``default`` (or unset): ``userId`` -> ``sessionId`` -> ``remoteAddress``
-      -> random fallback.
+    * ``default`` (or unset): ``userId`` -> ``sessionId`` -> random fallback.
+      (The native engine does NOT consider ``remoteAddress`` for variant
+      stickiness — only userId then sessionId, then random.)
     * ``random``: a fresh random value every call.
     * any other value: a custom context field (top-level or ``properties``);
       falls back to random when the field is absent.
@@ -83,7 +84,7 @@ def _resolve_stickiness_seed(context: dict, stickiness: Optional[str]) -> str:
     selector = stickiness or "default"
 
     if selector == "default":
-        for key in ("userId", "sessionId", "remoteAddress"):
+        for key in ("userId", "sessionId"):
             value = context.get(key)
             if value is not None:
                 return str(value)
@@ -101,17 +102,16 @@ def _resolve_stickiness_seed(context: dict, stickiness: Optional[str]) -> str:
 def _apply_overrides(variants: List[VariantDef], context: dict) -> Optional[VariantDef]:
     """Return the variant whose override matches the context, if any.
 
-    Matches the legacy behavior: the *last* matching override wins (the loop
-    does not short-circuit), preserving parity with the seed implementation and
-    the spec suite.
+    Matches the native engine (yggdrasil): the *first* matching override wins.
+    Variants are scanned in declaration order and the first variant with any
+    override matching the context is returned immediately.
     """
-    matched: Optional[VariantDef] = None
     for variant in variants:
         for override in variant.overrides:
             value = _context_value(context, override.context_name)
             if value is not None and str(value) in override.values:
-                matched = variant
-    return matched
+                return variant
+    return None
 
 
 def _build_variant(variant: VariantDef, feature_enabled: bool) -> Variant:

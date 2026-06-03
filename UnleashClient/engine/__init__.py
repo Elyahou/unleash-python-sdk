@@ -26,6 +26,7 @@ from UnleashClient.engine.metrics import MetricsBucket
 from UnleashClient.engine.state import (
     EngineState,
     FeatureDefinition,
+    TotalParseFailure,
     parse_client_features,
     serialize_state,
 )
@@ -55,12 +56,25 @@ class UnleashEngine:
     def take_state(self, state_json: str) -> Optional[str]:
         """Parse and install a new ClientFeatures state.
 
+        A *total* parse failure (invalid JSON, or valid JSON that is not an
+        object) leaves the prior good state untouched — matching the native
+        engine, which never wipes its loaded features on a bad fetch. Only the
+        warnings are surfaced; the existing state keeps evaluating. Per-feature
+        degradation still applies normally (the offending feature is skipped).
+
         :param state_json: Raw ClientFeatures JSON (flat or delta-event form).
         :return: A newline-joined warnings string for unparseable entries, or
             ``None`` when there are no warnings (matching the native engine).
         """
         prior_raw = self._state.raw if self._state is not None else None
-        self._state, warnings = parse_client_features(state_json, prior_raw)
+        try:
+            new_state, warnings = parse_client_features(
+                state_json, prior_raw, raise_on_total_failure=True
+            )
+        except TotalParseFailure as exc:
+            # Preserve the prior good state; do not wipe loaded features.
+            return "\n".join(exc.warnings) if exc.warnings else None
+        self._state = new_state
         if warnings:
             return "\n".join(warnings)
         return None

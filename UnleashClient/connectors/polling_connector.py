@@ -1,3 +1,4 @@
+import json
 import uuid
 from typing import Callable, Optional
 
@@ -12,6 +13,26 @@ from UnleashClient.events import UnleashEventType, UnleashFetchedEvent
 from UnleashClient.utils import LOGGER
 
 from .base_connector import BaseConnector
+
+
+def _is_usable_features_body(body: str) -> bool:
+    """Return whether ``body`` is a structurally usable ClientFeatures payload.
+
+    Guards the cache against a *total* parse failure — invalid JSON, or valid
+    JSON that is not an object (``null`` / ``[]`` / ``42`` / ``"oops"``), which
+    the engine would refuse to load. A JSON object (flat ``{features}`` or delta
+    ``{events}`` form) is considered usable; per-feature degradation is handled
+    downstream by ``take_state`` without discarding the whole body.
+    """
+    try:
+        payload = json.loads(body)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    # Must be an actual ClientFeatures document (flat or delta), not an HTTP-200
+    # error envelope such as ``{"error": ..., "statusCode": 502}``.
+    return "features" in payload or "events" in payload
 
 
 class PollingConnector(BaseConnector):
@@ -69,7 +90,17 @@ class PollingConnector(BaseConnector):
         )
 
         if state:
-            self.cache.set(FEATURES_URL, state)
+            # Validate the freshly fetched body BEFORE caching it, so a corrupt /
+            # truncated / non-ClientFeatures HTTP 200 body (e.g. a proxy error
+            # page or ``null``) cannot poison the cache and persist across
+            # restarts. Only cache the body when it parses into usable state.
+            if _is_usable_features_body(state):
+                self.cache.set(FEATURES_URL, state)
+            else:
+                LOGGER.warning(
+                    "Server returned an unparseable feature provisioning body; "
+                    "discarding it and keeping previously cached provisioning."
+                )
         else:
             LOGGER.debug(
                 "No feature provisioning returned from server, using cached provisioning."

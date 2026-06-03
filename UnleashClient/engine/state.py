@@ -168,6 +168,18 @@ class StrategyDef:
     sort_order: int = 0
     has_missing_segment: bool = False
 
+    # Pre-parsed strategy parameters (computed once at load time so the
+    # evaluation hot path does no per-call splitting / IP parsing). Which field
+    # is populated depends on ``name``:
+    #
+    # * ``userWithId``          -> ``parsed_user_ids`` (frozenset of trimmed ids)
+    # * ``applicationHostname`` -> ``parsed_host_names`` (frozenset of trimmed names)
+    # * ``remoteAddress``       -> ``parsed_ips`` (list of ``ip_network`` /
+    #   ``ip_address`` objects for the configured ``IPs``)
+    parsed_user_ids: Optional[frozenset] = None
+    parsed_host_names: Optional[frozenset] = None
+    parsed_ips: Optional[List[Any]] = None
+
 
 # ---------------------------------------------------------------------------
 # Dependency model
@@ -348,6 +360,32 @@ def _compile_cidrs(values: List[str]) -> List[Any]:
     return networks
 
 
+def _compile_strategy_ips(raw_ips: Optional[str]) -> List[Any]:
+    """Parse a ``remoteAddress`` strategy ``IPs`` parameter once at load time.
+
+    Splits the comma-separated ``IPs`` string and parses each entry into an
+    ``ip_network`` (for CIDR entries, ``strict=False``) or an ``ip_address``,
+    skipping blank/invalid entries. The hot path then only has to parse the
+    *context* IP and scan these pre-parsed objects — mirroring the IN_CIDR
+    constraint's ``parsed_cidrs`` pre-compilation.
+    """
+    parsed: List[Any] = []
+    if not raw_ips:
+        return parsed
+    for raw_entry in raw_ips.split(","):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+        try:
+            if "/" in entry:
+                parsed.append(ipaddress.ip_network(entry, strict=False))
+            else:
+                parsed.append(ipaddress.ip_address(entry))
+        except ValueError:
+            continue
+    return parsed
+
+
 def _parse_constraint(  # noqa: PLR0912
     raw: dict, warnings: List[str], where: str
 ) -> ConstraintDef:
@@ -487,6 +525,23 @@ def _parse_strategy(
 
     variants = _parse_variants(raw.get("variants") or [])
 
+    # Pre-parse the strategy's own list/IP parameters once, so the hot path is a
+    # single set lookup / pre-parsed-network scan instead of re-splitting and
+    # re-parsing the fixed parameter string on every evaluation.
+    parsed_user_ids: Optional[frozenset] = None
+    parsed_host_names: Optional[frozenset] = None
+    parsed_ips: Optional[List[Any]] = None
+    if name == "userWithId":
+        raw_user_ids = parameters.get("userIds")
+        if raw_user_ids is not None:
+            parsed_user_ids = frozenset(x.strip() for x in raw_user_ids.split(","))
+    elif name == "applicationHostname":
+        raw_host_names = parameters.get("hostNames")
+        if raw_host_names:
+            parsed_host_names = frozenset(x.strip() for x in raw_host_names.split(","))
+    elif name == "remoteAddress":
+        parsed_ips = _compile_strategy_ips(parameters.get("IPs"))
+
     return StrategyDef(
         name=name,
         parameters=parameters,
@@ -495,6 +550,9 @@ def _parse_strategy(
         variants=variants,
         sort_order=int(raw.get("sortOrder", 0) or 0),
         has_missing_segment=has_missing_segment,
+        parsed_user_ids=parsed_user_ids,
+        parsed_host_names=parsed_host_names,
+        parsed_ips=parsed_ips,
     )
 
 
@@ -596,8 +654,28 @@ def _fold_delta_events(  # noqa: PLR0912
     }
 
 
+class TotalParseFailure(Exception):
+    """Raised when a ``ClientFeatures`` payload cannot be parsed at all.
+
+    Distinguishes a wholly-unusable payload (invalid JSON, or valid JSON that is
+    not an object — ``null`` / ``[]`` / ``42`` / ``"oops"``) from a payload whose
+    *individual* features merely degrade. The facade catches this to **preserve
+    the prior good state** instead of wiping every loaded feature, matching the
+    native engine which leaves internal state untouched on a top-level parse
+    failure.
+
+    Carries the human-readable ``warnings`` so the facade can still surface them.
+    """
+
+    def __init__(self, warnings: List[str]) -> None:
+        super().__init__("; ".join(warnings) or "total parse failure")
+        self.warnings = warnings
+
+
 def parse_client_features(
-    json_str: str, prior_raw: Optional[dict] = None
+    json_str: str,
+    prior_raw: Optional[dict] = None,
+    raise_on_total_failure: bool = False,
 ) -> Tuple[EngineState, List[str]]:
     """Parse a raw ``ClientFeatures`` JSON string into a pre-compiled state.
 
@@ -609,9 +687,18 @@ def parse_client_features(
     cannot be parsed produces a warning and is skipped or degraded, but never
     aborts the whole payload — matching the ``take_state`` contract.
 
+    A *total* parse failure (invalid JSON, or valid JSON that is not an object)
+    is different: it yields no usable state at all. By default such a failure
+    still returns a fresh empty :class:`EngineState` (legacy behavior). When
+    ``raise_on_total_failure`` is ``True`` it instead raises
+    :class:`TotalParseFailure` so the caller can preserve its prior state rather
+    than silently wiping every loaded feature.
+
     :param json_str: Raw ClientFeatures (or delta) JSON.
     :param prior_raw: The previously applied flat payload, used as the base for
         delta merges (ignored for flat / hydration payloads).
+    :param raise_on_total_failure: When ``True``, raise :class:`TotalParseFailure`
+        on a top-level parse failure instead of returning an empty state.
     :return: ``(EngineState, warnings)`` where ``warnings`` is a list of
         per-entry human-readable messages (the facade joins these with newlines
         and returns ``None`` when empty).
@@ -622,10 +709,28 @@ def parse_client_features(
         payload = json.loads(json_str)
     except (ValueError, TypeError) as exc:
         warnings.append(f"Failed to parse client features payload: {exc}")
+        if raise_on_total_failure:
+            raise TotalParseFailure(warnings) from exc
         return EngineState(), warnings
 
     if not isinstance(payload, dict):
         warnings.append("Client features payload is not a JSON object")
+        if raise_on_total_failure:
+            raise TotalParseFailure(warnings)
+        return EngineState(), warnings
+
+    # A JSON object that carries neither ``features`` nor ``events`` is not a
+    # ClientFeatures document at all (e.g. an HTTP-200 error envelope like
+    # ``{"error": "Bad Gateway", "statusCode": 502}``). The native engine refuses
+    # such a payload and keeps its prior state; treat it as a total failure so we
+    # do not silently wipe every loaded feature. (An explicit empty
+    # ``"features": []`` IS valid and clears the state, as before.)
+    if "features" not in payload and "events" not in payload:
+        warnings.append(
+            "Client features payload has no 'features' or 'events' field"
+        )
+        if raise_on_total_failure:
+            raise TotalParseFailure(warnings)
         return EngineState(), warnings
 
     # Delta/streaming protocol: fold the event list into a flat payload.

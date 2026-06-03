@@ -65,7 +65,7 @@ class StreamingConnector(BaseConnector):
         if self._thread:
             self._thread.join(timeout=5)
 
-    def _run(self):
+    def _run(self):  # noqa: PLR0911, PLR0912, PLR0915
         try:
             LOGGER.info("Connecting to Unleash streaming endpoint: %s", self._base_url)
 
@@ -99,7 +99,17 @@ class StreamingConnector(BaseConnector):
 
                 if event.event in ("unleash-connected", "unleash-updated"):
                     try:
-                        self.engine.take_state(event.data)
+                        warnings = self.engine.take_state(event.data)
+                        if warnings:
+                            LOGGER.warning(
+                                "Some streaming features were not parsed correctly, "
+                                "they may not evaluate as expected"
+                            )
+                            LOGGER.warning(warnings)
+                        # ``take_state`` preserves the prior good state on a total
+                        # parse failure, so ``get_state()`` here serializes the
+                        # (still valid) engine state — a bad frame can no longer
+                        # poison the cache with an empty payload.
                         self.cache.set(FEATURES_URL, self.engine.get_state())
 
                         if event.event == "unleash-connected" and self.ready_callback:

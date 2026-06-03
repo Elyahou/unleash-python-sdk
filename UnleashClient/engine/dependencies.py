@@ -25,10 +25,10 @@ recurses back into dependency resolution.
 from __future__ import annotations
 
 from UnleashClient.engine.state import EngineState, FeatureState
-from UnleashClient.engine.variants import select_variant
+from UnleashClient.engine.variants import feature_enabled, select_variant
 
 
-def dependencies_satisfied(
+def dependencies_satisfied(  # noqa: PLR0911
     feature: FeatureState,
     context: dict,
     state: EngineState,
@@ -57,29 +57,34 @@ def dependencies_satisfied(
         if parent.dependencies:
             return False
 
-        # Resolve the parent's enabled verdict and selected variant in one pass.
-        # The parent has no dependencies of its own (checked above), so this
-        # cannot recurse back into dependency resolution.
+        # Whether this dependency needs the parent's *variant* (not just the
+        # enabled verdict). Variant matching only applies when the dependency
+        # lists required variants, expects the parent enabled, and the parent
+        # actually defines variants somewhere (feature-level OR on any strategy).
+        needs_variant = (
+            bool(dependency.variants)
+            and dependency.enabled
+            and _parent_has_variants(parent)
+        )
+
+        # When no variant is required, resolve only the enabled verdict — the
+        # cheaper path — instead of running the full variant pipeline (stickiness
+        # seed, murmur3 hash, weighted scan, Variant allocation) just to discard
+        # the variant name. The parent has no dependencies of its own (checked
+        # above), so neither call recurses back into dependency resolution.
+        if not needs_variant:
+            if feature_enabled(parent, context, state) != dependency.enabled:
+                return False
+            continue
+
         parent_variant = select_variant(parent, context, state)
         parent_enabled = (
             bool(parent_variant.feature_enabled) if parent_variant else False
         )
-
         if parent_enabled != dependency.enabled:
             return False
-
-        # Variant matching only applies when the parent is expected enabled and
-        # actually defines variants somewhere (feature-level OR on any strategy).
-        # When the parent defines no variants at all, the dependency's variant
-        # constraint is ignored (matching the native engine: there is nothing to
-        # compare against, so the dependency is satisfied).
-        if (
-            dependency.variants
-            and dependency.enabled
-            and _parent_has_variants(parent)
-        ):
-            if parent_variant is None or parent_variant.name not in dependency.variants:
-                return False
+        if parent_variant is None or parent_variant.name not in dependency.variants:
+            return False
 
     return True
 

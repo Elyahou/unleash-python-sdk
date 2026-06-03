@@ -72,13 +72,16 @@ def apply_user_with_id(
     if user_id is None:
         return False
 
-    raw = strategy.parameters.get("userIds")
-    if raw is None:
-        return False
-
-    # ``"".split(",")`` yields ``[""]``, a matchable empty token: a context
-    # ``userId`` of ``""`` matches a ``userIds`` of ``""`` (native-engine parity).
-    user_ids = [x.strip() for x in raw.split(",")]
+    # Prefer the set pre-computed at load time (single O(1) lookup). Fall back to
+    # splitting here only for a ``StrategyDef`` built directly (e.g. in a test).
+    user_ids = strategy.parsed_user_ids
+    if user_ids is None:
+        raw = strategy.parameters.get("userIds")
+        if raw is None:
+            return False
+        # ``"".split(",")`` yields ``[""]``, a matchable empty token: a context
+        # ``userId`` of ``""`` matches a ``userIds`` of ``""`` (native parity).
+        user_ids = frozenset(x.strip() for x in raw.split(","))
     return user_id in user_ids
 
 
@@ -207,26 +210,23 @@ def apply_remote_address(
     except ValueError:
         return False
 
-    raw_ips = strategy.parameters.get("IPs")
-    if not raw_ips:
-        return False
+    # Prefer the networks/addresses pre-parsed at load time (mirrors the IN_CIDR
+    # constraint's ``parsed_cidrs``). Fall back to parsing the raw ``IPs`` string
+    # only for a ``StrategyDef`` built directly (e.g. in a test).
+    networks = strategy.parsed_ips
+    if networks is None:
+        from UnleashClient.engine.state import (  # noqa: PLC0415
+            _compile_strategy_ips,
+        )
 
-    for raw_entry in raw_ips.split(","):
-        entry = raw_entry.strip()
-        if not entry:
-            continue
-        try:
-            if "/" in entry:
-                network = ipaddress.ip_network(entry, strict=False)
-                if network.version == context_ip.version and context_ip in network:
-                    return True
-            else:
-                addr = ipaddress.ip_address(entry)
-                if addr == context_ip:
-                    return True
-        except ValueError:
-            # Invalid config entry: ignore and keep scanning.
-            continue
+        networks = _compile_strategy_ips(strategy.parameters.get("IPs"))
+
+    for entry in networks:
+        if isinstance(entry, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
+            if entry.version == context_ip.version and context_ip in entry:
+                return True
+        elif entry == context_ip:
+            return True
 
     return False
 
@@ -240,10 +240,12 @@ def apply_application_hostname(
     strategy: StrategyDef, context: dict, state: EngineState
 ) -> bool:
     """The ``applicationHostname`` strategy: matches the host's name."""
-    raw = strategy.parameters.get("hostNames")
-    if not raw:
-        return False
-    host_names = [x.strip() for x in raw.split(",")]
+    host_names = strategy.parsed_host_names
+    if host_names is None:
+        raw = strategy.parameters.get("hostNames")
+        if not raw:
+            return False
+        host_names = frozenset(x.strip() for x in raw.split(","))
     return platform.node() in host_names
 
 
