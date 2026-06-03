@@ -1,0 +1,13 @@
+{
+  "engine": "embedded",
+  "python_version": "3.13.7",
+  "iterations": 50000,
+  "scenarios": {
+    "simple": 2245382.8804808566,
+    "constraints": 47336.912129598684,
+    "flexible_rollout": 1260448.6252254064,
+    "variants_is_enabled": 2217286.6705147424,
+    "variants_get_variant": 769653.5801385358,
+    "user_with_id": 282604.0264722886
+  }
+}
