@@ -3,11 +3,11 @@
   "python_version": "3.13.7",
   "iterations": 50000,
   "scenarios": {
-    "simple": 155200.27609511855,
-    "constraints": 147426.0336160827,
-    "flexible_rollout": 155104.96999991356,
-    "variants_is_enabled": 155648.0594700227,
-    "variants_get_variant": 132959.03901460132,
-    "user_with_id": 154684.7638303375
+    "simple": 153453.4508685435,
+    "constraints": 149898.98664888873,
+    "flexible_rollout": 153138.9464379567,
+    "variants_is_enabled": 154757.1976776711,
+    "variants_get_variant": 133039.75888559056,
+    "user_with_id": 155298.33269731764
   }
 }

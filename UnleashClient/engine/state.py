@@ -726,9 +726,7 @@ def parse_client_features(
     # do not silently wipe every loaded feature. (An explicit empty
     # ``"features": []`` IS valid and clears the state, as before.)
     if "features" not in payload and "events" not in payload:
-        warnings.append(
-            "Client features payload has no 'features' or 'events' field"
-        )
+        warnings.append("Client features payload has no 'features' or 'events' field")
         if raise_on_total_failure:
             raise TotalParseFailure(warnings)
         return EngineState(), warnings

@@ -138,14 +138,18 @@ def _gen_date(rng: random.Random) -> str:
     year = rng.randint(2018, 2026)
     month = rng.randint(1, 12)
     day = rng.randint(1, 28)
-    dt = datetime(year, month, day, rng.randint(0, 23), rng.randint(0, 59), tzinfo=timezone.utc)
+    dt = datetime(
+        year, month, day, rng.randint(0, 23), rng.randint(0, 59), tzinfo=timezone.utc
+    )
     return dt.isoformat()
 
 
 def _gen_cidr(rng: random.Random) -> str:
     if rng.random() < 0.5:
         return f"{rng.randint(0, 255)}.{rng.randint(0, 255)}.{rng.randint(0, 255)}.{rng.randint(0, 255)}"
-    return f"{rng.randint(0, 255)}.{rng.randint(0, 255)}.0.0/{rng.choice([8, 16, 24, 32])}"
+    return (
+        f"{rng.randint(0, 255)}.{rng.randint(0, 255)}.0.0/{rng.choice([8, 16, 24, 32])}"
+    )
 
 
 def _gen_string(rng: random.Random) -> str:
@@ -438,14 +442,14 @@ def _gen_context(rng: random.Random) -> Dict[str, Any]:
 
     # split into top-level base context fields vs properties, exactly like
     # UnleashClient._extract_properties / _safe_context.
-    properties_src = base.pop("properties", {}) if isinstance(base.get("properties"), dict) else {}
+    properties_src = (
+        base.pop("properties", {}) if isinstance(base.get("properties"), dict) else {}
+    )
     extracted = {k: v for k, v in base.items() if k not in _BASE_CONTEXT_FIELDS}
     properties_src.update(extracted)
 
     safe_properties = {k: _safe_value(v) for k, v in properties_src.items()}
-    safe_context = {
-        k: _safe_value(v) for k, v in base.items() if k != "properties"
-    }
+    safe_context = {k: _safe_value(v) for k, v in base.items() if k != "properties"}
     safe_context["properties"] = safe_properties
     return safe_context
 

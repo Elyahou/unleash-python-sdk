@@ -495,13 +495,20 @@ class TestSemverOperators:
         # the plain version (``1.2.3 < 1.2.3+build``), unlike SemVer §10 /
         # python-semver which ignore it. EQ/GT/GTE/LTE must reflect that.
         eq = c("SEMVER_EQ", context_name="version", value="1.2.3")
-        assert evaluate_constraint(eq, {"properties": {"version": "1.2.3+build"}}) is False
+        assert (
+            evaluate_constraint(eq, {"properties": {"version": "1.2.3+build"}}) is False
+        )
 
         gt = c("SEMVER_GT", context_name="version", value="1.2.3")
-        assert evaluate_constraint(gt, {"properties": {"version": "1.2.3+build"}}) is True
+        assert (
+            evaluate_constraint(gt, {"properties": {"version": "1.2.3+build"}}) is True
+        )
 
         lte = c("SEMVER_LTE", context_name="version", value="1.2.3")
-        assert evaluate_constraint(lte, {"properties": {"version": "1.2.3+build"}}) is False
+        assert (
+            evaluate_constraint(lte, {"properties": {"version": "1.2.3+build"}})
+            is False
+        )
 
         gte = c("SEMVER_GTE", context_name="version", value="1.2.3+build")
         assert evaluate_constraint(gte, {"properties": {"version": "1.2.3"}}) is False
@@ -514,7 +521,10 @@ class TestSemverOperators:
         assert evaluate_constraint(gt, {"properties": {"version": "1.2.3+1"}}) is False
 
         gt_alpha = c("SEMVER_GT", context_name="version", value="1.2.3+1")
-        assert evaluate_constraint(gt_alpha, {"properties": {"version": "1.2.3+a"}}) is True
+        assert (
+            evaluate_constraint(gt_alpha, {"properties": {"version": "1.2.3+a"}})
+            is True
+        )
 
     def test_semver_alpha_lt(self):
         con = c("SEMVER_LT", context_name="version", value="2.0.0-alpha.1")
