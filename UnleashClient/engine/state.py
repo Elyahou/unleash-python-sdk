@@ -167,6 +167,13 @@ class StrategyDef:
     variants: List[VariantDef] = field(default_factory=list)
     sort_order: int = 0
     has_missing_segment: bool = False
+    # The strategy's OWN constraints, excluding any merged in from segments.
+    # ``constraints`` above is own + resolved-segment constraints (flattened for
+    # the hot path); ``own_constraints`` is retained separately so serialization
+    # can re-emit the strategy/segment split that yggdrasil preserves (the
+    # top-level ``segments`` table plus strategy ``segments`` refs) instead of
+    # inlining segment constraints and losing the references.
+    own_constraints: List[ConstraintDef] = field(default_factory=list)
 
     # Pre-parsed strategy parameters (computed once at load time so the
     # evaluation hot path does no per-call splitting / IP parsing). Which field
@@ -550,6 +557,7 @@ def _parse_strategy(
         variants=variants,
         sort_order=int(raw.get("sortOrder", 0) or 0),
         has_missing_segment=has_missing_segment,
+        own_constraints=own_constraints,
         parsed_user_ids=parsed_user_ids,
         parsed_host_names=parsed_host_names,
         parsed_ips=parsed_ips,
@@ -799,24 +807,30 @@ def _serialize_variant(variant: VariantDef) -> dict:
     return raw
 
 
-def _serialize_strategy(strategy: StrategyDef, known_segment_ids: set) -> dict:
+def _serialize_segment(segment: Segment) -> dict:
+    return {
+        "id": segment.segment_id,
+        "constraints": [_serialize_constraint(c) for c in segment.constraints],
+    }
+
+
+def _serialize_strategy(strategy: StrategyDef) -> dict:
     raw: Dict[str, Any] = {"name": strategy.name}
     if strategy.parameters:
         raw["parameters"] = dict(strategy.parameters)
-    # Present segments have already been flattened into ``constraints`` at parse
-    # time, so we serialize the resolved constraint list inline. We must, however,
-    # re-emit any segment ids that did NOT resolve (missing segments) so the
-    # re-parsed strategy keeps ``has_missing_segment`` set — otherwise a strategy
-    # that should evaluate ``False`` (spec ``15-global-constraints``) would flip
-    # to ``True`` on round-trip. Present segment ids are intentionally omitted to
-    # avoid double-applying their (already inline) constraints.
-    if strategy.constraints:
-        raw["constraints"] = [_serialize_constraint(c) for c in strategy.constraints]
-    missing_segment_ids = [
-        sid for sid in strategy.segment_ids if sid not in known_segment_ids
-    ]
-    if missing_segment_ids:
-        raw["segments"] = missing_segment_ids
+    # Emit the strategy's OWN constraints (segment constraints live in the
+    # top-level ``segments`` table) and re-emit ALL segment ids, mirroring
+    # yggdrasil's get_state(). On re-parse, present ids re-resolve their
+    # constraints from the table and missing ids re-set ``has_missing_segment``
+    # (spec ``15-global-constraints``). This preserves segment references across
+    # a get_state()/take_state() round-trip so streaming ``segment-updated``
+    # deltas still find the strategies that use a segment.
+    if strategy.own_constraints:
+        raw["constraints"] = [
+            _serialize_constraint(c) for c in strategy.own_constraints
+        ]
+    if strategy.segment_ids:
+        raw["segments"] = list(strategy.segment_ids)
     if strategy.variants:
         raw["variants"] = [_serialize_variant(v) for v in strategy.variants]
     if strategy.sort_order:
@@ -833,7 +847,7 @@ def _serialize_dependency(dependency: DependencyDef) -> dict:
     return raw
 
 
-def _serialize_feature(feature: FeatureState, known_segment_ids: set) -> dict:
+def _serialize_feature(feature: FeatureState) -> dict:
     raw: Dict[str, Any] = {
         "name": feature.name,
         "enabled": feature.enabled,
@@ -846,9 +860,7 @@ def _serialize_feature(feature: FeatureState, known_segment_ids: set) -> dict:
     if feature.impression_data:
         raw["impressionData"] = True
     if feature.strategies:
-        raw["strategies"] = [
-            _serialize_strategy(s, known_segment_ids) for s in feature.strategies
-        ]
+        raw["strategies"] = [_serialize_strategy(s) for s in feature.strategies]
     if feature.variants:
         raw["variants"] = [_serialize_variant(v) for v in feature.variants]
     if feature.dependencies:
@@ -861,17 +873,20 @@ def serialize_state(state: EngineState) -> str:
 
     Must round-trip losslessly enough that ``parse_client_features`` of the
     output reproduces identical evaluation behavior (streaming cache contract).
-    Segments are emitted inline as resolved strategy constraints (not as a
-    top-level segment table), which is evaluation-equivalent.
+    Segments are emitted as a top-level ``segments`` table with strategies
+    keeping their ``segments`` references, mirroring yggdrasil's get_state() so
+    that streaming ``segment-updated`` deltas applied after a cache restore can
+    still locate the strategies that reference each segment.
 
     :param state: The engine state to serialize.
     :return: A JSON string consumable by ``parse_client_features`` / ``take_state``.
     """
-    known_segment_ids = set(state.segments.keys())
-    payload = {
+    payload: Dict[str, Any] = {
         "version": state.version,
-        "features": [
-            _serialize_feature(f, known_segment_ids) for f in state.features.values()
-        ],
+        "features": [_serialize_feature(f) for f in state.features.values()],
     }
+    if state.segments:
+        payload["segments"] = [
+            _serialize_segment(seg) for seg in state.segments.values()
+        ]
     return json.dumps(payload)

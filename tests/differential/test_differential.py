@@ -796,3 +796,86 @@ def test_flexible_rollout_missing_named_stickiness_parity() -> None:
                 actual = _emb_is_enabled(state, "f", ctx)
                 assert expected is False, (stickiness, rollout, ctx, expected)
                 assert actual == expected, (stickiness, rollout, ctx)
+
+
+def test_get_state_preserves_segments_like_yggdrasil() -> None:
+    # Parity regression: get_state() must keep the top-level segments table and
+    # strategy segment refs (yggdrasil does), not inline segment constraints.
+    # Inlining evaluates correctly but loses the references a streaming
+    # segment-updated delta needs to find the strategy after a cache restore.
+    state = {
+        "version": 2,
+        "segments": [
+            {
+                "id": 1,
+                "constraints": [
+                    {"contextName": "appName", "operator": "IN", "values": ["A"]}
+                ],
+            }
+        ],
+        "features": [
+            {
+                "name": "f",
+                "enabled": True,
+                "strategies": [
+                    {
+                        "name": "flexibleRollout",
+                        "parameters": {
+                            "rollout": "100",
+                            "stickiness": "default",
+                            "groupId": "f",
+                        },
+                        "constraints": [
+                            {"contextName": "plan", "operator": "IN", "values": ["pro"]}
+                        ],
+                        "segments": [1],
+                    }
+                ],
+            }
+        ],
+    }
+
+    ygg, emb = YggEngine(), EmbeddedEngine()
+    ygg.take_state(json.dumps(state))
+    emb.take_state(json.dumps(state))
+
+    ygg_rt = json.loads(ygg.get_state())
+    emb_rt = json.loads(emb.get_state())
+
+    # Both keep a top-level segments table and the strategy's segment ref.
+    assert emb_rt.get("segments"), "embedded get_state dropped the segments table"
+    assert ygg_rt.get("segments")
+    assert emb_rt["features"][0]["strategies"][0].get("segments") == [1]
+    assert ygg_rt["features"][0]["strategies"][0].get("segments") == [1]
+
+    # Evaluation parity across the round-trip (needs appName=A AND plan=pro).
+    for ctx in (
+        {"appName": "A", "properties": {"plan": "pro"}},
+        {"appName": "B", "properties": {"plan": "pro"}},
+        {"appName": "A", "properties": {"plan": "free"}},
+    ):
+        assert _emb_is_enabled(state, "f", ctx) == _ygg_is_enabled(state, "f", ctx)
+        emb2 = EmbeddedEngine()
+        emb2.take_state(emb.get_state())
+        assert emb2.is_enabled("f", dict(ctx)) == ygg.is_enabled("f", dict(ctx))
+
+    # The bug this guards: a segment-updated delta after a cache restore must
+    # re-target the strategy (segment ref survived serialization).
+    restored = EmbeddedEngine()
+    restored.take_state(emb.get_state())
+    delta = {
+        "events": [
+            {
+                "type": "segment-updated",
+                "segment": {
+                    "id": 1,
+                    "constraints": [
+                        {"contextName": "appName", "operator": "IN", "values": ["B"]}
+                    ],
+                },
+            }
+        ]
+    }
+    restored.take_state(json.dumps(delta))
+    assert restored.is_enabled("f", {"appName": "B", "properties": {"plan": "pro"}})
+    assert not restored.is_enabled("f", {"appName": "A", "properties": {"plan": "pro"}})
