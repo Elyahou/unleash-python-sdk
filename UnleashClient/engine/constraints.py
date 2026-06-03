@@ -42,6 +42,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from datetime import datetime, timezone
+from functools import lru_cache
 from typing import Any, List, Optional
 
 import semver
@@ -189,7 +190,18 @@ def _rust_parse_f64(value: Any) -> Optional[float]:
         return float(value)
     if not isinstance(value, str):
         return None
-    # ``[0-9]`` (not ``\d``) and the explicit grammar exclude underscores,
+    return _rust_parse_f64_str(value)
+
+
+@lru_cache(maxsize=4096)
+def _rust_parse_f64_str(value: str) -> Optional[float]:
+    """String arm of :func:`_rust_parse_f64`, memoized.
+
+    Context values repeat heavily across calls (same plan/version strings), so
+    the regex validation + ``float()`` parse is cached. Pure function of an
+    immutable string; the bounded LRU keeps churn from unique values cheap.
+    """
+    # ``[0-9]`` (not ``\\d``) and the explicit grammar exclude underscores,
     # surrounding whitespace and non-ASCII digits that ``float()`` would accept.
     if not _RUST_F64_RE.match(value):
         return None
@@ -242,23 +254,34 @@ def _to_aware_datetime(value: Any) -> Optional[datetime]:
     if isinstance(value, datetime):
         parsed = value
     elif isinstance(value, str):
-        # Require an explicit timezone: chrono's RFC3339 parser rejects naive
-        # timestamps. ``fromisoformat`` accepts date-only and space-separated
-        # forms that chrono refuses, so we additionally require a ``T``/``t``
-        # separator and a resulting non-None tzinfo.
-        if "T" not in value and "t" not in value:
-            return None
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-        if parsed.tzinfo is None:
-            return None
+        return _to_aware_datetime_str(value)
     else:
         return None
 
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+@lru_cache(maxsize=4096)
+def _to_aware_datetime_str(value: str) -> Optional[datetime]:
+    """String arm of :func:`_to_aware_datetime`, memoized.
+
+    Pure function of an immutable string returning an immutable datetime, so
+    sharing cached instances across calls is safe.
+    """
+    # Require an explicit timezone: chrono's RFC3339 parser rejects naive
+    # timestamps. ``fromisoformat`` accepts date-only and space-separated
+    # forms that chrono refuses, so we additionally require a ``T``/``t``
+    # separator and a resulting non-None tzinfo.
+    if "T" not in value and "t" not in value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
     return parsed
 
 
@@ -284,6 +307,23 @@ def _match_date(constraint: ConstraintDef, context_value: Any) -> bool:
 def _parse_semver(value: Any) -> Optional[semver.Version]:
     if isinstance(value, semver.Version):
         return value
+    if isinstance(value, str):
+        return _parse_semver_str(value)
+    try:
+        return semver.Version.parse(value)
+    except (ValueError, TypeError):
+        return None
+
+
+@lru_cache(maxsize=4096)
+def _parse_semver_str(value: str) -> Optional[semver.Version]:
+    """String arm of :func:`_parse_semver`, memoized.
+
+    ``semver.Version.parse`` is the most expensive context-side parse on the
+    hot path (~2us); context values like app versions repeat constantly, so
+    caching them flattens the constraint-heavy latency tail. Cached ``Version``
+    instances are treated as immutable by all callers.
+    """
     try:
         return semver.Version.parse(value)
     except (ValueError, TypeError):

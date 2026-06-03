@@ -54,15 +54,17 @@ except ImportError:
     from typing_extensions import Literal, TypedDict  # type: ignore
 
 INSTANCES = InstanceCounter()
-_BASE_CONTEXT_FIELDS = [
-    "userId",
-    "sessionId",
-    "environment",
-    "appName",
-    "currentTime",
-    "remoteAddress",
-    "properties",
-]
+_BASE_CONTEXT_FIELDS = frozenset(
+    [
+        "userId",
+        "sessionId",
+        "environment",
+        "appName",
+        "currentTime",
+        "remoteAddress",
+        "properties",
+    ]
+)
 
 
 class _RunState(IntEnum):
@@ -190,6 +192,18 @@ class UnleashClient:
         self.unleash_static_context = {
             "appName": self.unleash_app_name,
             "environment": self.unleash_environment,
+        }
+        # Precomputed, fully-sanitized form of the static context. Reused as a
+        # fast path by _safe_context when callers pass no per-call context.
+        self._static_safe_context = {
+            k: self._safe_context_value(v)
+            for k, v in self.unleash_static_context.items()
+            if k != "properties"
+        }
+        self._static_safe_properties = {
+            k: self._safe_context_value(v)
+            for k, v in self.unleash_static_context.items()
+            if k not in _BASE_CONTEXT_FIELDS
         }
         self.unleash_project_name = project_name
         self.unleash_verbose_log_level = verbose_log_level
@@ -607,11 +621,19 @@ class UnleashClient:
         return variant
 
     def _safe_context(self, context) -> dict:
-        new_context: Dict[str, Any] = self.unleash_static_context.copy()
-        new_context.update(context or {})
+        # NB: unlike upstream, ``currentTime`` is NOT injected here. Both the
+        # embedded engine and yggdrasil substitute "now" internally when a
+        # date constraint reads an absent ``currentTime`` (parity verified),
+        # so stamping every call with ``datetime.now().isoformat()`` was pure
+        # hot-path overhead.
+        if not context:
+            # Fast path: shallow copies of the precomputed static context
+            # (copies, because the result is handed to user callbacks).
+            safe_context = dict(self._static_safe_context)
+            safe_context["properties"] = dict(self._static_safe_properties)
+            return safe_context
 
-        if "currentTime" not in new_context:
-            new_context["currentTime"] = datetime.now(timezone.utc).isoformat()
+        new_context: Dict[str, Any] = {**self.unleash_static_context, **context}
 
         safe_properties = self._extract_properties(new_context)
         safe_properties = {
@@ -636,10 +658,10 @@ class UnleashClient:
         return extracted_fields
 
     def _safe_context_value(self, value):
+        if type(value) is str:  # noqa: E721 — exact type check is the fast path
+            return value
         if isinstance(value, datetime):
             return value.isoformat()
-        if isinstance(value, (int, float)):
-            return str(value)
         return str(value)
 
     def _resolve_variant(self, feature_name: str, context: dict) -> dict:
