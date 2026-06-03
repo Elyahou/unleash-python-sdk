@@ -3,11 +3,11 @@ from typing import Callable, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from yggdrasil_engine.engine import UnleashEngine
 
 from UnleashClient.api import get_feature_toggles
 from UnleashClient.cache import BaseCache
 from UnleashClient.constants import ETAG, FEATURES_URL
+from UnleashClient.engine import UnleashEngine
 from UnleashClient.events import UnleashEventType, UnleashFetchedEvent
 from UnleashClient.utils import LOGGER
 
@@ -53,7 +53,7 @@ class PollingConnector(BaseConnector):
         self.job = None
 
     def _fetch_and_load(self):
-        (state, etag) = get_feature_toggles(
+        state, etag = get_feature_toggles(
             url=self.url,
             app_name=self.app_name,
             instance_id=self.instance_id,

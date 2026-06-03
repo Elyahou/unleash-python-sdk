@@ -15,7 +15,6 @@ from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.base import STATE_RUNNING, BaseScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from yggdrasil_engine.engine import UnleashEngine
 
 from UnleashClient.api import register_client
 from UnleashClient.connectors import (
@@ -35,14 +34,13 @@ from UnleashClient.constants import (
     SDK_NAME,
     SDK_VERSION,
 )
-from UnleashClient.environment_resolver import extract_environment_from_headers
+from UnleashClient.engine import UnleashEngine
 from UnleashClient.events import (
     BaseEvent,
     UnleashEvent,
     UnleashEventType,
     UnleashReadyEvent,
 )
-from UnleashClient.impact_metrics import ImpactMetrics
 from UnleashClient.periodic_tasks import (
     aggregate_and_send_metrics,
 )
@@ -208,15 +206,6 @@ class UnleashClient:
         self.metric_job: Job = None
         self.engine = UnleashEngine()
 
-        impact_metrics_environment = self.unleash_environment
-        extracted_env = extract_environment_from_headers(self.unleash_custom_headers)
-        if extracted_env:
-            impact_metrics_environment = extracted_env
-
-        self.impact_metrics = ImpactMetrics(
-            self.engine, self.unleash_app_name, impact_metrics_environment
-        )
-
         self.cache = cache or FileCache(
             self.unleash_app_name, directory=cache_directory
         )
@@ -228,7 +217,11 @@ class UnleashClient:
         self._init_scheduler(scheduler, scheduler_executor)
 
         if custom_strategies:
-            self.engine.register_custom_strategies(custom_strategies)
+            raise ValueError(
+                "Custom strategies are not supported by the embedded evaluation "
+                "engine. Remove the 'custom_strategies' argument; only Unleash's "
+                "built-in strategies are available."
+            )
 
         self.strategy_mapping = {**custom_strategies}
 

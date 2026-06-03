@@ -435,31 +435,20 @@ def test_uc_dirty_cache(readyable_unleash_client_nodestroy):
 
 
 @responses.activate
-def test_uc_is_enabled_with_context():
-    event_handler, ready_signal, _ = build_event_handlers()
-
-    # Set up API
-    responses.add(responses.POST, URL + REGISTER_URL, json={}, status=202)
-    responses.add(
-        responses.GET, URL + FEATURES_URL, json=MOCK_FEATURE_RESPONSE, status=200
-    )
-    responses.add(responses.POST, URL + METRICS_URL, json={}, status=202)
+def test_uc_custom_strategies_rejected():
+    """The embedded engine drops custom strategies; passing them must error."""
+    event_handler, _, _ = build_event_handlers()
 
     custom_strategies_dict = {"custom-context": EnvironmentStrategy()}
 
-    unleash_client = UnleashClient(
-        URL,
-        APP_NAME,
-        environment="prod",
-        custom_strategies=custom_strategies_dict,
-        event_callback=event_handler,
-    )
-    # Create Unleash client and check initial load
-    unleash_client.initialize_client()
-
-    ready_signal.wait(timeout=1)
-    assert unleash_client.is_enabled("testContextFlag")
-    unleash_client.destroy()
+    with pytest.raises(ValueError):
+        UnleashClient(
+            URL,
+            APP_NAME,
+            environment="prod",
+            custom_strategies=custom_strategies_dict,
+            event_callback=event_handler,
+        )
 
 
 @responses.activate

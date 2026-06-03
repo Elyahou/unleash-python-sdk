@@ -1,6 +1,5 @@
 import responses
 from apscheduler.schedulers.background import BackgroundScheduler
-from yggdrasil_engine.engine import UnleashEngine
 
 from tests.utilities.mocks.mock_features import (
     MOCK_FEATURE_RESPONSE,
@@ -20,6 +19,7 @@ from tests.utilities.testing_constants import (
 )
 from UnleashClient.connectors import PollingConnector
 from UnleashClient.constants import ETAG, FEATURES_URL
+from UnleashClient.engine import UnleashEngine
 
 FULL_FEATURE_URL = URL + FEATURES_URL
 

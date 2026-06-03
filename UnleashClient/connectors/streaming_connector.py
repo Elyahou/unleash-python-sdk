@@ -3,11 +3,11 @@ from typing import Callable, Optional
 
 from ld_eventsource import SSEClient
 from ld_eventsource.config import ConnectStrategy, ErrorStrategy, RetryDelayStrategy
-from yggdrasil_engine.engine import UnleashEngine
 
 from UnleashClient.cache import BaseCache
 from UnleashClient.connectors.base_connector import BaseConnector
 from UnleashClient.constants import APPLICATION_HEADERS, FEATURES_URL, STREAMING_URL
+from UnleashClient.engine import UnleashEngine
 from UnleashClient.utils import LOGGER
 
 

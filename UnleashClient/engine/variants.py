@@ -19,10 +19,17 @@ the keys ``name``, ``payload``, ``enabled`` and ``feature_enabled``.
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
-from UnleashClient.engine.state import EngineState, FeatureState
+from UnleashClient.engine.hashing import VARIANT_HASH_SEED, normalized_hash
+from UnleashClient.engine.state import (
+    EngineState,
+    FeatureState,
+    StrategyDef,
+    VariantDef,
+)
 
 
 @dataclass
@@ -50,21 +57,241 @@ DISABLED_VARIANT: Variant = Variant(
 )
 
 
+def _context_value(context: dict, context_name: str) -> Optional[str]:
+    """Resolve a context field: top-level first, then ``properties``.
+
+    Mirrors the identifier lookup used everywhere else in the engine. Returns
+    ``None`` when absent. Values are returned as-is (callers stringify).
+    """
+    if context_name in context:
+        return context[context_name]
+    properties = context.get("properties")
+    if isinstance(properties, dict) and context_name in properties:
+        return properties[context_name]
+    return None
+
+
+def _resolve_stickiness_seed(context: dict, stickiness: Optional[str]) -> str:
+    """Compute the stickiness identifier used to hash a variant selection.
+
+    * ``default`` (or unset): ``userId`` -> ``sessionId`` -> ``remoteAddress``
+      -> random fallback.
+    * ``random``: a fresh random value every call.
+    * any other value: a custom context field (top-level or ``properties``);
+      falls back to random when the field is absent.
+    """
+    selector = stickiness or "default"
+
+    if selector == "default":
+        for key in ("userId", "sessionId", "remoteAddress"):
+            value = context.get(key)
+            if value is not None:
+                return str(value)
+        return str(random.random() * 10000)
+
+    if selector == "random":
+        return str(random.random() * 10000)
+
+    value = _context_value(context, selector)
+    if value is not None:
+        return str(value)
+    return str(random.random() * 10000)
+
+
+def _apply_overrides(variants: List[VariantDef], context: dict) -> Optional[VariantDef]:
+    """Return the variant whose override matches the context, if any.
+
+    Matches the legacy behavior: the *last* matching override wins (the loop
+    does not short-circuit), preserving parity with the seed implementation and
+    the spec suite.
+    """
+    matched: Optional[VariantDef] = None
+    for variant in variants:
+        for override in variant.overrides:
+            value = _context_value(context, override.context_name)
+            if value is not None and str(value) in override.values:
+                matched = variant
+    return matched
+
+
+def _build_variant(variant: VariantDef, feature_enabled: bool) -> Variant:
+    """Materialize a :class:`Variant` from a compiled :class:`VariantDef`."""
+    return Variant(
+        name=variant.name,
+        payload=variant.payload,
+        enabled=True,
+        feature_enabled=feature_enabled,
+    )
+
+
+def select_from_variants(
+    variants: List[VariantDef],
+    group: str,
+    context: dict,
+    feature_enabled: bool,
+    stickiness: Optional[str] = None,
+) -> Variant:
+    """Pure weighted variant selection (no strategy/feature gating).
+
+    Selection order:
+
+    1. Variant overrides (a matching override forces that variant).
+    2. Weighted distribution: ``normalized_hash`` over the total weight using the
+       :data:`VARIANT_HASH_SEED`, picking the first variant whose running
+       cumulative weight reaches the hashed target.
+
+    Stickiness resolution: an explicit ``stickiness`` argument takes precedence
+    (used for strategy-level variants, which inherit the *strategy's* stickiness
+    per spec ``16-strategy-variants``); otherwise the first variant's own
+    ``stickiness`` field is used (feature-level / custom-stickiness variants).
+
+    Returns the disabled variant (carrying ``feature_enabled``) when there are no
+    variants or the total weight is non-positive.
+    """
+    if not variants:
+        return Variant(
+            name="disabled",
+            payload=None,
+            enabled=False,
+            feature_enabled=feature_enabled,
+        )
+
+    override = _apply_overrides(variants, context)
+    if override is not None:
+        return _build_variant(override, feature_enabled)
+
+    total_weight = variants[-1].cumulative_weight
+    if total_weight <= 0:
+        # Defensive: fall back to summing if cumulative weights were not
+        # precomputed for some reason.
+        total_weight = sum(v.weight for v in variants)
+    if total_weight <= 0:
+        return Variant(
+            name="disabled",
+            payload=None,
+            enabled=False,
+            feature_enabled=feature_enabled,
+        )
+
+    if stickiness is None:
+        stickiness = variants[0].stickiness
+    identifier = _resolve_stickiness_seed(context, stickiness)
+    target = normalized_hash(group, identifier, total_weight, seed=VARIANT_HASH_SEED)
+
+    counter = 0
+    for variant in variants:
+        counter += variant.weight
+        if counter >= target:
+            return _build_variant(variant, feature_enabled)
+
+    # Unreachable for positive weights, but keep a safe fallback.
+    return _build_variant(variants[-1], feature_enabled)
+
+
+def _evaluate_feature(
+    feature: FeatureState,
+    context: dict,
+    state: EngineState,
+) -> tuple:
+    """Resolve feature-enabled state and the matched enabling strategy.
+
+    Returns ``(feature_enabled, matched_strategy)`` where ``matched_strategy`` is
+    the first strategy that granted access (or ``None`` when the feature has no
+    strategies / is disabled). Strategy and dependency evaluation are delegated
+    to the sibling modules so the variant module stays free of evaluation logic.
+    """
+    # Imported lazily to break the import cycle: ``dependencies`` and
+    # ``strategies`` both import from this module.
+    from UnleashClient.engine.dependencies import (  # noqa: PLC0415
+        dependencies_satisfied,
+    )
+    from UnleashClient.engine.strategies import evaluate_strategy  # noqa: PLC0415
+
+    if not feature.enabled:
+        return False, None
+
+    if not dependencies_satisfied(feature, context, state):
+        return False, None
+
+    if not feature.strategies:
+        # No strategies => enabled (not expressible via the UI, but defined).
+        return True, None
+
+    for strategy in feature.strategies:
+        if evaluate_strategy(strategy, context, state):
+            return True, strategy
+
+    return False, None
+
+
+def feature_enabled(
+    feature: FeatureState,
+    context: dict,
+    state: EngineState,
+) -> bool:
+    """Return whether ``feature`` evaluates enabled for ``context``.
+
+    Thin wrapper over :func:`_evaluate_feature` exposing only the enabled verdict
+    (strategies + dependencies), used by the engine facade's ``is_enabled``.
+    """
+    enabled, _ = _evaluate_feature(feature, context, state)
+    return enabled
+
+
 def select_variant(
     feature: FeatureState,
     context: dict,
     state: EngineState,
 ) -> Optional[Variant]:
-    """Select the variant for an (already-evaluated) feature.
+    """Select the variant for a feature given a context.
 
-    Implementations decide feature-enabled state internally (or via the
-    strategies/dependencies modules) and return the disabled variant with the
-    correct ``feature_enabled`` flag when no variant applies. Returns ``None``
-    only when the feature is unknown (so the facade can signal "unknown toggle").
+    Determines feature-enabled state internally (strategies + dependencies),
+    then chooses between strategy-level variants (from the matched enabling
+    strategy, hashed on that strategy's ``groupId``) and feature-level variants
+    (hashed on the feature name). Returns the disabled variant — carrying the
+    correct ``feature_enabled`` flag — when no variant applies. Returns ``None``
+    only for an unknown (``None``) feature.
 
     :param feature: The compiled feature.
     :param context: The evaluation context.
     :param state: The full engine state.
     :return: The selected :class:`Variant`, or ``None`` for unknown features.
     """
-    raise NotImplementedError
+    if feature is None:
+        return None
+
+    feature_enabled, matched_strategy = _evaluate_feature(feature, context, state)
+
+    if not feature_enabled:
+        return DISABLED_VARIANT
+
+    # Strategy variants (from the enabling strategy) take precedence over
+    # feature variants; otherwise fall back to feature-level variants.
+    if matched_strategy is not None and matched_strategy.variants:
+        group = _strategy_group(matched_strategy, feature)
+        # Strategy-level variants inherit the strategy's stickiness (spec
+        # ``16-strategy-variants``), not any per-variant stickiness field.
+        strategy_stickiness = matched_strategy.parameters.get("stickiness")
+        return select_from_variants(
+            matched_strategy.variants,
+            group,
+            context,
+            feature_enabled=True,
+            stickiness=strategy_stickiness,
+        )
+
+    if feature.variants:
+        return select_from_variants(
+            feature.variants, feature.name, context, feature_enabled=True
+        )
+
+    # Feature is enabled but has no applicable variants.
+    return Variant(name="disabled", payload=None, enabled=False, feature_enabled=True)
+
+
+def _strategy_group(strategy: StrategyDef, feature: FeatureState) -> str:
+    """Hash group for strategy variants: the strategy ``groupId`` or feature name."""
+    group_id = strategy.parameters.get("groupId")
+    if group_id:
+        return group_id
+    return feature.name

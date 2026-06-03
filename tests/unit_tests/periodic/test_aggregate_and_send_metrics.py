@@ -1,7 +1,6 @@
 import json
 
 import responses
-from yggdrasil_engine.engine import UnleashEngine
 
 from tests.utilities.testing_constants import (
     APP_NAME,
@@ -16,6 +15,7 @@ from UnleashClient.constants import (
     CLIENT_SPEC_VERSION,
     METRICS_URL,
 )
+from UnleashClient.engine import UnleashEngine
 from UnleashClient.periodic_tasks import aggregate_and_send_metrics
 
 FULL_METRICS_URL = URL + METRICS_URL
@@ -63,7 +63,7 @@ def test_metrics_metadata_is_sent():
     assert len(responses.calls) == 1
     request = json.loads(responses.calls[0].request.body)
 
-    assert request["yggdrasilVersion"] is not None
+    assert "yggdrasilVersion" not in request
     assert request["specVersion"] == CLIENT_SPEC_VERSION
     assert request["platformName"] is not None
     assert request["platformVersion"] is not None

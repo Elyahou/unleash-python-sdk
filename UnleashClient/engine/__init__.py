@@ -30,7 +30,11 @@ from UnleashClient.engine.state import (
     parse_client_features,
     serialize_state,
 )
-from UnleashClient.engine.variants import DISABLED_VARIANT, Variant
+from UnleashClient.engine.variants import (
+    Variant,
+    feature_enabled,
+    select_variant,
+)
 
 __all__ = ["UnleashEngine", "Variant", "FeatureDefinition"]
 
@@ -52,11 +56,12 @@ class UnleashEngine:
     def take_state(self, state_json: str) -> Optional[str]:
         """Parse and install a new ClientFeatures state.
 
-        :param state_json: Raw ClientFeatures JSON.
+        :param state_json: Raw ClientFeatures JSON (flat or delta-event form).
         :return: A newline-joined warnings string for unparseable entries, or
             ``None`` when there are no warnings (matching yggdrasil).
         """
-        self._state, warnings = parse_client_features(state_json)
+        prior_raw = self._state.raw if self._state is not None else None
+        self._state, warnings = parse_client_features(state_json, prior_raw)
         if warnings:
             return "\n".join(warnings)
         return None
@@ -79,7 +84,10 @@ class UnleashEngine:
         :return: ``True``/``False`` for known toggles, or ``None`` when the
             toggle is unknown (triggers the SDK's fallback path).
         """
-        raise NotImplementedError
+        feature = self._state.get_feature(toggle_name)
+        if feature is None:
+            return None
+        return feature_enabled(feature, context, self._state)
 
     def get_variant(self, toggle_name: str, context: dict) -> Optional[Variant]:
         """Resolve the variant for a toggle and context.
@@ -89,7 +97,10 @@ class UnleashEngine:
         :return: A :class:`Variant` (``asdict``-compatible with yggdrasil's), or
             ``None`` when the toggle is unknown.
         """
-        raise NotImplementedError
+        feature = self._state.get_feature(toggle_name)
+        if feature is None:
+            return None
+        return select_variant(feature, context, self._state)
 
     # -- metrics ------------------------------------------------------------
 
@@ -128,6 +139,4 @@ class UnleashEngine:
 
     def register_custom_strategies(self, custom_strategies: dict) -> None:
         """Custom strategies are not supported by the embedded engine."""
-        raise NotImplementedError(
-            "Custom strategies are not supported by the embedded engine"
-        )
+        raise ValueError("Custom strategies are not supported by the embedded engine")

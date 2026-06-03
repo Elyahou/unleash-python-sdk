@@ -1,10 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
 
-from yggdrasil_engine.engine import UnleashEngine
-
 from UnleashClient.cache import BaseCache
 from UnleashClient.constants import FEATURES_URL
+from UnleashClient.engine import UnleashEngine
 from UnleashClient.utils import LOGGER
 
 
