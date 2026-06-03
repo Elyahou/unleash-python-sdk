@@ -89,29 +89,35 @@ class PollingConnector(BaseConnector):
             cached_etag=self.cache.get(ETAG),
         )
 
-        if state:
-            # Validate the freshly fetched body BEFORE caching it, so a corrupt /
-            # truncated / non-ClientFeatures HTTP 200 body (e.g. a proxy error
-            # page or ``null``) cannot poison the cache and persist across
-            # restarts. Only cache the body when it parses into usable state.
-            if _is_usable_features_body(state):
-                self.cache.set(FEATURES_URL, state)
-            else:
-                LOGGER.warning(
-                    "Server returned an unparseable feature provisioning body; "
-                    "discarding it and keeping previously cached provisioning."
-                )
+        # Validate the freshly fetched body BEFORE caching it, so a corrupt /
+        # truncated / non-ClientFeatures HTTP 200 body (e.g. a proxy error
+        # page or ``null``) cannot poison the cache and persist across
+        # restarts. Only cache the body when it parses into usable state.
+        usable = bool(state) and _is_usable_features_body(state)
+
+        if usable:
+            self.cache.set(FEATURES_URL, state)
+        elif state:
+            LOGGER.warning(
+                "Server returned an unparseable feature provisioning body; "
+                "discarding it and keeping previously cached provisioning."
+            )
         else:
             LOGGER.debug(
                 "No feature provisioning returned from server, using cached provisioning."
             )
 
-        if etag:
+        # Only advance the ETag when we actually accepted the body. Storing the
+        # ETag of a discarded body would make the next request send
+        # ``If-None-Match`` with it, receive a 304, and keep the stale flags
+        # indefinitely — re-introducing the cache poisoning the check above
+        # prevents.
+        if etag and usable:
             self.cache.set(ETAG, etag)
 
         self.load_features()
 
-        if state:
+        if usable:
             if self.event_callback:
                 event = UnleashFetchedEvent(
                     event_type=UnleashEventType.FETCHED,

@@ -761,3 +761,13 @@ class TestPreParsedPath:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+def test_get_context_value_non_dict_properties_does_not_crash():
+    # A non-dict ``properties`` (list/str from a raw/bootstrapped payload that
+    # bypassed _safe_context) must not raise TypeError; treat as absent.
+    assert get_context_value({"properties": ["x", "y"]}, "x") is None
+    assert get_context_value({"properties": "hello"}, "ell") is None
+    assert get_context_value({"properties": {"x": "1"}}, "x") == "1"
+    # top-level still wins
+    assert get_context_value({"x": "top", "properties": ["x"]}, "x") == "top"

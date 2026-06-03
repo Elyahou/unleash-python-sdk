@@ -152,3 +152,51 @@ def test_polling_connector_start_stop(cache_empty):
     assert connector.job is None
 
     scheduler.shutdown()
+
+
+@responses.activate
+def test_polling_connector_corrupt_200_does_not_poison_cache_or_etag(cache_empty):
+    # A corrupt HTTP-200 body must be discarded AND must not advance the ETag.
+    # Storing the bad body's ETag would make the next request send If-None-Match,
+    # receive a 304, and keep stale flags indefinitely (regression guard).
+    engine = UnleashEngine()
+    scheduler = BackgroundScheduler()
+    responses.add(
+        responses.GET,
+        FULL_FEATURE_URL,
+        json=MOCK_FEATURE_RESPONSE,
+        status=200,
+        headers={"etag": ETAG_VALUE},
+    )
+
+    connector = PollingConnector(
+        engine=engine,
+        cache=cache_empty,
+        scheduler=scheduler,
+        url=URL,
+        app_name=APP_NAME,
+        instance_id=INSTANCE_ID,
+        headers=CUSTOM_HEADERS,
+        custom_options=CUSTOM_OPTIONS,
+        request_timeout=REQUEST_TIMEOUT,
+        request_retries=REQUEST_RETRIES,
+    )
+    connector._fetch_and_load()
+    good_state = cache_empty.get(FEATURES_URL)
+    assert cache_empty.get(ETAG) == ETAG_VALUE
+
+    # Now a corrupt 200 with a NEW etag.
+    responses.reset()
+    responses.add(
+        responses.GET,
+        FULL_FEATURE_URL,
+        body="null",
+        status=200,
+        content_type="application/json",
+        headers={"etag": 'W/"poison-etag"'},
+    )
+    connector._fetch_and_load()
+
+    # Body discarded, prior good state preserved, and the poison ETag NOT stored.
+    assert cache_empty.get(FEATURES_URL) == good_state
+    assert cache_empty.get(ETAG) == ETAG_VALUE

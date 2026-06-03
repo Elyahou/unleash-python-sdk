@@ -122,7 +122,11 @@ def get_context_value(context: dict, context_name: str) -> Optional[Any]:
     if context_name in context:
         return context[context_name]
     properties = context.get("properties")
-    if properties is not None and context_name in properties:
+    # Guard against a non-dict ``properties`` (e.g. a list or string from a
+    # bootstrapped/raw payload that did not go through the SDK's _safe_context):
+    # ``name in properties`` can be truthy for a list/str while
+    # ``properties[name]`` raises TypeError. Mirrors variants._context_value.
+    if isinstance(properties, dict) and context_name in properties:
         return properties[context_name]
     return None
 
