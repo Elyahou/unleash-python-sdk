@@ -1,0 +1,13 @@
+{
+  "engine": "yggdrasil",
+  "python_version": "3.13.7",
+  "iterations": 50000,
+  "scenarios": {
+    "simple": 151732.788282492,
+    "constraints": 145361.0564368873,
+    "flexible_rollout": 148083.0648512334,
+    "variants_is_enabled": 152312.19430798493,
+    "variants_get_variant": 131065.4784045035,
+    "user_with_id": 155983.97410698902
+  }
+}

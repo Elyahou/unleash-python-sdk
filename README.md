@@ -10,6 +10,33 @@ You can use this client with [Unleash Enterprise](https://www.getunleash.io/pric
 >
 > If you use custom strategies or access the `features` property on the Unleash Client, read the complete [migration guide](./v6_MIGRATION_GUIDE.md) before upgrading to v6.
 
+## Embedded evaluation engine
+
+This fork evaluates feature flags with a pure-Python engine embedded in the SDK
+(`UnleashClient/engine/`) instead of the compiled `yggdrasil-engine` native
+package. Evaluation happens in-process on plain Python dicts, with no JSON
+serialization or Python↔Rust FFI boundary on the hot path.
+
+Benefits:
+
+- **Faster evaluation.** A head-to-head throughput benchmark shows a geometric
+  mean speedup of roughly **7.6×** over the FFI engine across representative
+  flag shapes (simple on/off, constrained, gradual rollout with stickiness,
+  variants, and `userWithId`).
+- **Pure-Python wheel.** No native binary dependency to build or ship.
+
+The engine is a drop-in replacement for the engine API the SDK already used and
+implements all built-in strategies, constraint operators, segments, variants,
+stickiness, dependent features, and murmur3 normalized hashing. Parity is
+verified against the official Unleash client-specification suite plus a
+randomized differential test against the real `yggdrasil-engine` (kept as a
+dev-only dependency).
+
+**Not supported in this fork:**
+
+- **Custom strategies.** Only Unleash's built-in activation strategies are
+  available. Passing `custom_strategies` to the client raises a `ValueError`.
+- **Impact metrics.** The `impact_metrics` API has been removed.
 
 ## Getting Started
 
@@ -128,7 +155,7 @@ The UnleashClient constructor supports the following configuration options:
 | custom_options            | Extra options for [HTTP requests](https://requests.readthedocs.io/en/latest/api/#main-interface).                                                 | None                      |
 | request_timeout           | HTTP request timeout (seconds).	                                                                                                                | 30                        |
 | request_retries           | HTTP request retry count.	                                                                                                                        | 3                         |
-| custom_strategies 	    | Dict of `{name: strategy}` for custom activation strategies. See [custom strategies](#custom-strategies) for more information.                      | None                      |
+| custom_strategies 	    | **Not supported in this fork.** Passing this argument raises a `ValueError`; only Unleash's built-in strategies are available.                     | None                      |
 | cache_directory 	        | Location for the on-disk cache. Auto-determined.                                                                                                  | None                      |
 | cache 	                | Custom cache implementation (must extend BaseCache). See [custom cache](#custom-cache) for more information                                       | BaseCache                 |
 | scheduler 	            | Custom APScheduler instance.	Auto-created.                                                                                                       | BaseScheduler             |
@@ -212,36 +239,13 @@ client = UnleashClient(
 
 ### Custom strategies
 
-The Python SDK lets you define [custom activation strategies](https://docs.getunleash.io/reference/custom-activation-strategies) if the built-in ones don’t cover your needs. This gives you more fine grained control over how your features evaluate.
-
-A custom strategy is just a class that implements an apply method.
-
-``` python
-
-class ActiveForEmailStrategy:
-    def apply(self, parameters: dict, context: dict = None) -> bool:
-        # Decide if the feature is active for this context
-        return context.get("email") in parameters
-
-```
-
-Once you’ve defined your strategy, register it when you initialize the client. The key must match the strategy name in Unleash exactly.
-
-``` python
-## You should have a custom strategy defined in Unleash called 'EmailStrategy'
-my_custom_strategies = {
-    "EmailStrategy": ActiveForEmailStrategy()
-}
-
-client = UnleashClient(
-
-    url="https://YOUR-API-URL",
-    app_name="my-python-app",
-    custom_headers={'Authorization': '<API token>'},
-    custom_strategies = my_custom_strategies
-)
-
-```
+> **Not supported in this fork.**
+>
+> The embedded pure-Python evaluation engine only supports Unleash's built-in
+> activation strategies. Passing a `custom_strategies` argument to
+> `UnleashClient` raises a `ValueError`. If you rely on
+> [custom activation strategies](https://docs.getunleash.io/reference/custom-activation-strategies),
+> use the upstream SDK that depends on `yggdrasil-engine` instead.
 
 ### Events and impression data
 
@@ -321,53 +325,13 @@ client.is_enabled("testFlag")
 
 ### Impact metrics
 
-Impact metrics are lightweight, application-level time-series metrics stored and visualized directly inside Unleash. They allow you to connect specific application data, such as request counts, error rates, or latency, to your feature flags and release plans.
-
-These metrics help validate feature impact and automate release processes. For instance, you can monitor usage patterns or performance to determine if a feature meets its goals.
-
-The SDK automatically attaches context labels to metrics: `appName` and `environment`.
-
-#### Counters
-
-Use counters for cumulative values that only increase (total requests, errors):
-
-```python
-client.impact_metrics.define_counter(
-    "request_count",
-    "Total number of HTTP requests processed"
-)
-
-client.impact_metrics.increment_counter("request_count")
-```
-
-#### Gauges
-
-Use gauges for point-in-time values that can go up or down:
-
-```python
-client.impact_metrics.define_gauge(
-    "total_users",
-    "Total number of registered users"
-)
-
-client.impact_metrics.update_gauge("total_users", user_count)
-```
-
-#### Histograms
-
-Histograms measure value distribution (request duration, response size):
-
-```python
-client.impact_metrics.define_histogram(
-    "request_time_ms",
-    "Time taken to process a request in milliseconds",
-    [50, 100, 200, 500, 1000]
-)
-
-client.impact_metrics.observe_histogram("request_time_ms", 125)
-```
-
-Impact metrics are batched and sent using the same interval as standard SDK metrics.
+> **Not supported in this fork.**
+>
+> The `impact_metrics` API has been removed from this fork. The SDK still sends
+> standard toggle usage metrics (yes/no and variant counters) to Unleash. If you
+> need application-level
+> [impact metrics](https://docs.getunleash.io/reference/impact-metrics), use the
+> upstream SDK that depends on `yggdrasil-engine` instead.
 
 ### Custom cache
 

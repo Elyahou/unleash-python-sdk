@@ -97,6 +97,9 @@ ENV/
 # Rope project settings
 .ropeproject
 
+# - Recovered v5 engine seed
+.v5-seed/
+
 # Custom
 
 # - IDEs

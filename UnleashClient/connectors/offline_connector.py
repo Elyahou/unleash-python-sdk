@@ -2,9 +2,9 @@ from typing import Callable
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from yggdrasil_engine.engine import UnleashEngine
 
 from UnleashClient.cache import BaseCache
+from UnleashClient.engine import UnleashEngine
 
 from .base_connector import BaseConnector
 

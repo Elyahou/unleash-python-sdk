@@ -1,17 +1,38 @@
+import json
 import uuid
 from typing import Callable, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from yggdrasil_engine.engine import UnleashEngine
 
 from UnleashClient.api import get_feature_toggles
 from UnleashClient.cache import BaseCache
 from UnleashClient.constants import ETAG, FEATURES_URL
+from UnleashClient.engine import UnleashEngine
 from UnleashClient.events import UnleashEventType, UnleashFetchedEvent
 from UnleashClient.utils import LOGGER
 
 from .base_connector import BaseConnector
+
+
+def _is_usable_features_body(body: str) -> bool:
+    """Return whether ``body`` is a structurally usable ClientFeatures payload.
+
+    Guards the cache against a *total* parse failure — invalid JSON, or valid
+    JSON that is not an object (``null`` / ``[]`` / ``42`` / ``"oops"``), which
+    the engine would refuse to load. A JSON object (flat ``{features}`` or delta
+    ``{events}`` form) is considered usable; per-feature degradation is handled
+    downstream by ``take_state`` without discarding the whole body.
+    """
+    try:
+        payload = json.loads(body)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    # Must be an actual ClientFeatures document (flat or delta), not an HTTP-200
+    # error envelope such as ``{"error": ..., "statusCode": 502}``.
+    return "features" in payload or "events" in payload
 
 
 class PollingConnector(BaseConnector):
@@ -53,7 +74,7 @@ class PollingConnector(BaseConnector):
         self.job = None
 
     def _fetch_and_load(self):
-        (state, etag) = get_feature_toggles(
+        state, etag = get_feature_toggles(
             url=self.url,
             app_name=self.app_name,
             instance_id=self.instance_id,
@@ -68,19 +89,35 @@ class PollingConnector(BaseConnector):
             cached_etag=self.cache.get(ETAG),
         )
 
-        if state:
+        # Validate the freshly fetched body BEFORE caching it, so a corrupt /
+        # truncated / non-ClientFeatures HTTP 200 body (e.g. a proxy error
+        # page or ``null``) cannot poison the cache and persist across
+        # restarts. Only cache the body when it parses into usable state.
+        usable = bool(state) and _is_usable_features_body(state)
+
+        if usable:
             self.cache.set(FEATURES_URL, state)
+        elif state:
+            LOGGER.warning(
+                "Server returned an unparseable feature provisioning body; "
+                "discarding it and keeping previously cached provisioning."
+            )
         else:
             LOGGER.debug(
                 "No feature provisioning returned from server, using cached provisioning."
             )
 
-        if etag:
+        # Only advance the ETag when we actually accepted the body. Storing the
+        # ETag of a discarded body would make the next request send
+        # ``If-None-Match`` with it, receive a 304, and keep the stale flags
+        # indefinitely — re-introducing the cache poisoning the check above
+        # prevents.
+        if etag and usable:
             self.cache.set(ETAG, etag)
 
         self.load_features()
 
-        if state:
+        if usable:
             if self.event_callback:
                 event = UnleashFetchedEvent(
                     event_type=UnleashEventType.FETCHED,

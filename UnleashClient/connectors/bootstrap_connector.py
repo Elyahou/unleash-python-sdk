@@ -1,6 +1,5 @@
-from yggdrasil_engine.engine import UnleashEngine
-
 from UnleashClient.cache import BaseCache
+from UnleashClient.engine import UnleashEngine
 
 from .base_connector import BaseConnector
 

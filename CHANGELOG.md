@@ -1,3 +1,11 @@
+## Unreleased (embedded-engine fork)
+* (Major): Replaced the compiled `yggdrasil-engine` with an embedded pure-Python evaluation engine (`UnleashClient/engine/`). Feature flags are now evaluated in-process on plain dicts, with no JSON serialization or Python↔Rust FFI on the hot path.
+* (Major): `yggdrasil-engine` removed from runtime dependencies (retained as a dev/test dependency only, for the differential parity test).
+* (Breaking): Dropped support for custom strategies. Passing `custom_strategies` to `UnleashClient` now raises a `ValueError`; only Unleash's built-in strategies are supported.
+* (Breaking): Removed the impact metrics API (`client.impact_metrics`). Standard toggle/variant usage metrics are still sent.
+* (Performance): Head-to-head throughput benchmark shows a geometric-mean speedup of ~7.6× over the FFI engine. Per-scenario speedups: simple ~14.2×, variants `is_enabled` ~14.4×, `userWithId` ~12.6×, flexibleRollout ~8.5×, variants `get_variant` ~5.8×, constraints ~1.6×.
+* Parity verified by the official Unleash client-specification suite (279 cases) plus a randomized differential test against the real `yggdrasil-engine`.
+
 ## v6.7.0
 * (Minor): Support for CIDR, Semver GTE and LTE constraints
 

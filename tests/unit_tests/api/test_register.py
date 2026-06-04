@@ -72,7 +72,7 @@ def test_register_includes_metadata():
     assert len(responses.calls) == 1
     request = json.loads(responses.calls[0].request.body)
 
-    assert request["yggdrasilVersion"] is not None
+    assert "yggdrasilVersion" not in request
     assert request["specVersion"] == CLIENT_SPEC_VERSION
     assert request["connectionId"] == CONNECTION_ID
     assert request["platformName"] is not None
