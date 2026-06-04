@@ -2,10 +2,10 @@ import json
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from ct_unleash.connectors import OfflineConnector
+from ct_unleash.constants import FEATURES_URL
+from ct_unleash.engine import UnleashEngine
 from tests.utilities.mocks.mock_features import MOCK_FEATURE_RESPONSE
-from UnleashClient.connectors import OfflineConnector
-from UnleashClient.constants import FEATURES_URL
-from UnleashClient.engine import UnleashEngine
 
 
 def test_offline_connector_load_features(cache_empty):

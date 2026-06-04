@@ -2,8 +2,8 @@ import json
 
 import requests
 
-from UnleashClient.constants import APPLICATION_HEADERS, METRICS_URL
-from UnleashClient.utils import LOGGER, log_resp_info
+from ct_unleash.constants import APPLICATION_HEADERS, METRICS_URL
+from ct_unleash.utils import LOGGER, log_resp_info
 
 
 # pylint: disable=broad-except

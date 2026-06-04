@@ -47,7 +47,7 @@ from typing import Any, List, Optional
 
 import semver
 
-from UnleashClient.engine.state import ConstraintDef
+from ct_unleash.engine.state import ConstraintDef
 
 # ---------------------------------------------------------------------------
 # Operator groupings (module-level sets -> O(1) membership on the hot path)

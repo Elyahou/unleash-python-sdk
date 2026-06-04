@@ -42,7 +42,7 @@ def load_engine(engine_name: str):
 
     if engine_name == "embedded":
         try:
-            from UnleashClient.engine import UnleashEngine  # type: ignore
+            from ct_unleash.engine import UnleashEngine  # type: ignore
         except ImportError as exc:
             sys.exit(
                 "embedded engine not available yet "

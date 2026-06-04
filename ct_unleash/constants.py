@@ -2,7 +2,10 @@ from importlib_metadata import version
 
 # Library
 SDK_NAME = "unleash-python-sdk"
-SDK_VERSION = version("UnleashClient")
+try:
+    SDK_VERSION = version("ct-unleash")
+except Exception:  # pragma: no cover - source checkout without install
+    SDK_VERSION = "0+unknown"
 REQUEST_TIMEOUT = 30
 REQUEST_RETRIES = 3
 METRIC_LAST_SENT_TIME = "mlst"

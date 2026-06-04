@@ -9,8 +9,8 @@ from io import BytesIO
 import pytest
 import urllib3
 
-from UnleashClient import INSTANCES, UnleashClient
-from UnleashClient.cache import FileCache
+from ct_unleash import INSTANCES, UnleashClient
+from ct_unleash.cache import FileCache
 
 
 @pytest.fixture(autouse=True)

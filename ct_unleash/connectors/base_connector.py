@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
 
-from UnleashClient.cache import BaseCache
-from UnleashClient.constants import FEATURES_URL
-from UnleashClient.engine import UnleashEngine
-from UnleashClient.utils import LOGGER
+from ct_unleash.cache import BaseCache
+from ct_unleash.constants import FEATURES_URL
+from ct_unleash.engine import UnleashEngine
+from ct_unleash.utils import LOGGER
 
 
 class BaseConnector(ABC):

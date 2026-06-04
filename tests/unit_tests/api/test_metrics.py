@@ -4,6 +4,8 @@ import responses
 from pytest import mark, param
 from requests import ConnectionError
 
+from ct_unleash.api import send_metrics
+from ct_unleash.constants import METRICS_URL
 from tests.utilities.mocks.mock_metrics import MOCK_METRICS_REQUEST
 from tests.utilities.testing_constants import (
     CUSTOM_HEADERS,
@@ -11,8 +13,6 @@ from tests.utilities.testing_constants import (
     REQUEST_TIMEOUT,
     URL,
 )
-from UnleashClient.api import send_metrics
-from UnleashClient.constants import METRICS_URL
 
 FULL_METRICS_URL = URL + METRICS_URL
 

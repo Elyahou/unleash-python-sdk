@@ -6,7 +6,7 @@ from typing import Any
 import mmh3  # pylint: disable=import-error
 from requests import Response
 
-LOGGER = logging.getLogger("UnleashClient")
+LOGGER = logging.getLogger("ct_unleash")
 
 
 class InstanceAllowType(Enum):

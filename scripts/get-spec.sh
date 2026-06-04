@@ -1,5 +1,5 @@
 #!/bin/bash
-specversion=$(python -c "from UnleashClient.constants import CLIENT_SPEC_VERSION; print(CLIENT_SPEC_VERSION)")
+specversion=$(python -c "from ct_unleash.constants import CLIENT_SPEC_VERSION; print(CLIENT_SPEC_VERSION)")
 
 rm -rf tests/specification_tests/client-specification
 echo "Downloading client spec ${specversion}"

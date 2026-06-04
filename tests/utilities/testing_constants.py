@@ -1,4 +1,4 @@
-from UnleashClient.constants import FEATURES_URL
+from ct_unleash.constants import FEATURES_URL
 
 # General configs
 APP_NAME = "pytest"

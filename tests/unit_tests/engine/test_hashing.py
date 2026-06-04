@@ -11,7 +11,7 @@ exact integer outcomes the spec tests imply so any seam (seed, group ordering,
 import mmh3
 import pytest
 
-from UnleashClient.engine.hashing import VARIANT_HASH_SEED, normalized_hash
+from ct_unleash.engine.hashing import VARIANT_HASH_SEED, normalized_hash
 
 
 def _reference(group, identifier, normalizer, seed):

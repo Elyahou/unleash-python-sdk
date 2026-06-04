@@ -1,6 +1,9 @@
 import responses
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from ct_unleash.connectors import PollingConnector
+from ct_unleash.constants import ETAG, FEATURES_URL
+from ct_unleash.engine import UnleashEngine
 from tests.utilities.mocks.mock_features import (
     MOCK_FEATURE_RESPONSE,
     MOCK_FEATURE_RESPONSE_PROJECT,
@@ -17,9 +20,6 @@ from tests.utilities.testing_constants import (
     REQUEST_TIMEOUT,
     URL,
 )
-from UnleashClient.connectors import PollingConnector
-from UnleashClient.constants import ETAG, FEATURES_URL
-from UnleashClient.engine import UnleashEngine
 
 FULL_FEATURE_URL = URL + FEATURES_URL
 

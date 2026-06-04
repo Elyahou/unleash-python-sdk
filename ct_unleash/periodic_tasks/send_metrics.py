@@ -1,9 +1,9 @@
 from platform import python_implementation, python_version
 
-from UnleashClient.api import send_metrics
-from UnleashClient.constants import CLIENT_SPEC_VERSION
-from UnleashClient.engine import UnleashEngine
-from UnleashClient.utils import LOGGER
+from ct_unleash.api import send_metrics
+from ct_unleash.constants import CLIENT_SPEC_VERSION
+from ct_unleash.engine import UnleashEngine
+from ct_unleash.utils import LOGGER
 
 
 def aggregate_and_send_metrics(

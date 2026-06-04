@@ -6,9 +6,9 @@ from os import path
 
 import pytest
 
+from ct_unleash import UnleashClient
+from ct_unleash.cache import FileCache
 from tests.utilities.testing_constants import APP_NAME, URL
-from UnleashClient import UnleashClient
-from UnleashClient.cache import FileCache
 
 CLIENT_SPEC_PATH = "tests/specification_tests/client-specification/specifications"
 

@@ -40,9 +40,9 @@ from typing import Callable, Dict, Optional
 # their package) so unit tests can monkeypatch them while the sibling modules
 # are implemented in parallel, and so the hot path avoids attribute lookups
 # across module boundaries.
-from UnleashClient.engine.constraints import evaluate_constraint, get_context_value
-from UnleashClient.engine.hashing import normalized_hash
-from UnleashClient.engine.state import EngineState, StrategyDef
+from ct_unleash.engine.constraints import evaluate_constraint, get_context_value
+from ct_unleash.engine.hashing import normalized_hash
+from ct_unleash.engine.state import EngineState, StrategyDef
 
 # ---------------------------------------------------------------------------
 # default
@@ -220,7 +220,7 @@ def apply_remote_address(
     # only for a ``StrategyDef`` built directly (e.g. in a test).
     networks = strategy.parsed_ips
     if networks is None:
-        from UnleashClient.engine.state import (  # noqa: PLC0415
+        from ct_unleash.engine.state import (  # noqa: PLC0415
             _compile_strategy_ips,
         )
 

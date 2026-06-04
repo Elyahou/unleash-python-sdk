@@ -4,8 +4,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
-from UnleashClient.constants import FEATURES_URL
-from UnleashClient.utils import LOGGER, log_resp_info
+from ct_unleash.constants import FEATURES_URL
+from ct_unleash.utils import LOGGER, log_resp_info
 
 
 # pylint: disable=broad-except

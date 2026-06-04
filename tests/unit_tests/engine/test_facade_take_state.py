@@ -13,7 +13,7 @@ import json
 
 import pytest
 
-from UnleashClient.engine import UnleashEngine
+from ct_unleash.engine import UnleashEngine
 
 GOOD_STATE = json.dumps(
     {

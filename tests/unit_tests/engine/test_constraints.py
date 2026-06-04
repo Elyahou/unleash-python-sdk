@@ -13,8 +13,8 @@ from __future__ import annotations
 import pytest
 import semver
 
-from UnleashClient.engine.constraints import evaluate_constraint, get_context_value
-from UnleashClient.engine.state import ConstraintDef
+from ct_unleash.engine.constraints import evaluate_constraint, get_context_value
+from ct_unleash.engine.state import ConstraintDef
 
 # ---------------------------------------------------------------------------
 # Helpers

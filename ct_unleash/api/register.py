@@ -5,14 +5,14 @@ from platform import python_implementation, python_version
 import requests
 from requests.exceptions import InvalidHeader, InvalidSchema, InvalidURL, MissingSchema
 
-from UnleashClient.constants import (
+from ct_unleash.constants import (
     APPLICATION_HEADERS,
     CLIENT_SPEC_VERSION,
     REGISTER_URL,
     SDK_NAME,
     SDK_VERSION,
 )
-from UnleashClient.utils import LOGGER, log_resp_info
+from ct_unleash.utils import LOGGER, log_resp_info
 
 
 # pylint: disable=broad-except

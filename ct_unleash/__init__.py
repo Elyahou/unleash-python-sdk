@@ -16,15 +16,15 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.base import STATE_RUNNING, BaseScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from UnleashClient.api import register_client
-from UnleashClient.connectors import (
+from ct_unleash.api import register_client
+from ct_unleash.connectors import (
     BaseConnector,
     BootstrapConnector,
     OfflineConnector,
     PollingConnector,
     StreamingConnector,
 )
-from UnleashClient.constants import (
+from ct_unleash.constants import (
     APPLICATION_HEADERS,
     DISABLED_VARIATION,
     ETAG,
@@ -34,14 +34,14 @@ from UnleashClient.constants import (
     SDK_NAME,
     SDK_VERSION,
 )
-from UnleashClient.engine import UnleashEngine
-from UnleashClient.events import (
+from ct_unleash.engine import UnleashEngine
+from ct_unleash.events import (
     BaseEvent,
     UnleashEvent,
     UnleashEventType,
     UnleashReadyEvent,
 )
-from UnleashClient.periodic_tasks import (
+from ct_unleash.periodic_tasks import (
     aggregate_and_send_metrics,
 )
 

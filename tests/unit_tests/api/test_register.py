@@ -4,6 +4,8 @@ import responses
 from pytest import mark, param
 from requests import ConnectionError
 
+from ct_unleash.api import register_client
+from ct_unleash.constants import CLIENT_SPEC_VERSION, REGISTER_URL
 from tests.utilities.testing_constants import (
     APP_NAME,
     CONNECTION_ID,
@@ -14,8 +16,6 @@ from tests.utilities.testing_constants import (
     REQUEST_TIMEOUT,
     URL,
 )
-from UnleashClient.api import register_client
-from UnleashClient.constants import CLIENT_SPEC_VERSION, REGISTER_URL
 
 FULL_REGISTER_URL = URL + REGISTER_URL
 

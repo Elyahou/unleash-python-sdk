@@ -24,8 +24,8 @@ recurses back into dependency resolution.
 
 from __future__ import annotations
 
-from UnleashClient.engine.state import EngineState, FeatureState
-from UnleashClient.engine.variants import feature_enabled, select_variant
+from ct_unleash.engine.state import EngineState, FeatureState
+from ct_unleash.engine.variants import feature_enabled, select_variant
 
 
 def dependencies_satisfied(  # noqa: PLR0911

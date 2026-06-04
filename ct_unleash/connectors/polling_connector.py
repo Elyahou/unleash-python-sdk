@@ -5,12 +5,12 @@ from typing import Callable, Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from UnleashClient.api import get_feature_toggles
-from UnleashClient.cache import BaseCache
-from UnleashClient.constants import ETAG, FEATURES_URL
-from UnleashClient.engine import UnleashEngine
-from UnleashClient.events import UnleashEventType, UnleashFetchedEvent
-from UnleashClient.utils import LOGGER
+from ct_unleash.api import get_feature_toggles
+from ct_unleash.cache import BaseCache
+from ct_unleash.constants import ETAG, FEATURES_URL
+from ct_unleash.engine import UnleashEngine
+from ct_unleash.events import UnleashEventType, UnleashFetchedEvent
+from ct_unleash.utils import LOGGER
 
 from .base_connector import BaseConnector
 

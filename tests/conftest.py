@@ -3,10 +3,10 @@ from datetime import datetime, timezone
 
 import pytest
 
+from ct_unleash.cache import FileCache
+from ct_unleash.constants import ETAG, FEATURES_URL, METRIC_LAST_SENT_TIME
 from tests.utilities.mocks import MOCK_ALL_FEATURES, MOCK_CUSTOM_STRATEGY
 from tests.utilities.mocks.mock_features import MOCK_FEATURES_WITH_SEGMENTS_RESPONSE
-from UnleashClient.cache import FileCache
-from UnleashClient.constants import ETAG, FEATURES_URL, METRIC_LAST_SENT_TIME
 
 
 @pytest.fixture()

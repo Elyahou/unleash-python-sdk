@@ -30,7 +30,7 @@ pytest.importorskip("yggdrasil_engine")
 
 from yggdrasil_engine.engine import UnleashEngine as YggEngine  # noqa: E402
 
-from UnleashClient.engine import UnleashEngine as EmbeddedEngine  # noqa: E402
+from ct_unleash.engine import UnleashEngine as EmbeddedEngine  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Generation parameters

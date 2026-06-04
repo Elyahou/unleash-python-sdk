@@ -22,8 +22,8 @@ import re
 import threading
 from datetime import datetime, timezone
 
-from UnleashClient.engine import UnleashEngine
-from UnleashClient.engine.metrics import MetricsBucket, _utc_now_iso
+from ct_unleash.engine import UnleashEngine
+from ct_unleash.engine.metrics import MetricsBucket, _utc_now_iso
 
 # ---------------------------------------------------------------------------
 # _utc_now_iso

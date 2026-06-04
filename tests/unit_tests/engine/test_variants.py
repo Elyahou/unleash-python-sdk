@@ -29,14 +29,14 @@ from dataclasses import asdict
 
 import pytest
 
-from UnleashClient.engine.hashing import VARIANT_HASH_SEED, normalized_hash
-from UnleashClient.engine.state import (
+from ct_unleash.engine.hashing import VARIANT_HASH_SEED, normalized_hash
+from ct_unleash.engine.state import (
     EngineState,
     VariantDef,
     VariantOverride,
     parse_client_features,
 )
-from UnleashClient.engine.variants import (
+from ct_unleash.engine.variants import (
     DISABLED_VARIANT,
     Variant,
     select_from_variants,

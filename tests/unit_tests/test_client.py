@@ -13,6 +13,11 @@ from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from blinker import Signal, signal
 
+from ct_unleash import INSTANCES, UnleashClient
+from ct_unleash.cache import BaseCache, FileCache
+from ct_unleash.constants import FEATURES_URL, METRICS_URL, REGISTER_URL
+from ct_unleash.events import BaseEvent, UnleashEvent, UnleashEventType
+from ct_unleash.utils import InstanceAllowType
 from tests.utilities.mocks.mock_all_features import MOCK_ALL_FEATURES
 from tests.utilities.mocks.mock_features import (
     MOCK_FEATURE_ENABLED_NO_VARIANTS_RESPONSE,
@@ -42,11 +47,6 @@ from tests.utilities.testing_constants import (
     REQUEST_TIMEOUT,
     URL,
 )
-from UnleashClient import INSTANCES, UnleashClient
-from UnleashClient.cache import BaseCache, FileCache
-from UnleashClient.constants import FEATURES_URL, METRICS_URL, REGISTER_URL
-from UnleashClient.events import BaseEvent, UnleashEvent, UnleashEventType
-from UnleashClient.utils import InstanceAllowType
 
 
 class EnvironmentStrategy:

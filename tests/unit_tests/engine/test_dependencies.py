@@ -18,8 +18,8 @@ import os
 
 import pytest
 
-from UnleashClient.engine.dependencies import dependencies_satisfied
-from UnleashClient.engine.state import (
+from ct_unleash.engine.dependencies import dependencies_satisfied
+from ct_unleash.engine.state import (
     DependencyDef,
     EngineState,
     FeatureState,

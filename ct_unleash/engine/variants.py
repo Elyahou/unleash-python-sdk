@@ -23,8 +23,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-from UnleashClient.engine.hashing import VARIANT_HASH_SEED, normalized_hash
-from UnleashClient.engine.state import (
+from ct_unleash.engine.hashing import VARIANT_HASH_SEED, normalized_hash
+from ct_unleash.engine.state import (
     EngineState,
     FeatureState,
     StrategyDef,
@@ -210,10 +210,10 @@ def _evaluate_feature(
     """
     # Imported lazily to break the import cycle: ``dependencies`` and
     # ``strategies`` both import from this module.
-    from UnleashClient.engine.dependencies import (  # noqa: PLC0415
+    from ct_unleash.engine.dependencies import (  # noqa: PLC0415
         dependencies_satisfied,
     )
-    from UnleashClient.engine.strategies import evaluate_strategy  # noqa: PLC0415
+    from ct_unleash.engine.strategies import evaluate_strategy  # noqa: PLC0415
 
     if not feature.enabled:
         return False, None

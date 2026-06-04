@@ -20,8 +20,8 @@ from __future__ import annotations
 import mmh3
 import pytest
 
-from UnleashClient.engine import strategies
-from UnleashClient.engine.state import (
+from ct_unleash.engine import strategies
+from ct_unleash.engine.state import (
     ConstraintDef,
     EngineState,
     StrategyDef,

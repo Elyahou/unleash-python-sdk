@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 ROOT_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
-PROJECT_NAME = UnleashClient
+PROJECT_NAME = ct_unleash
 
 .PHONY: sphinx
 
@@ -34,11 +34,11 @@ install-docs: install
 #-----------------------------------------------------------------------
 fmt:
 	black . && \
-	ruff check UnleashClient tests --fix
+	ruff check ct_unleash tests --fix
 
 lint:
 	black . --check && \
-	ruff check UnleashClient tests docs && \
+	ruff check ct_unleash tests docs && \
 	mypy ${PROJECT_NAME} --install-types --non-interactive;
 
 pytest:
@@ -58,7 +58,7 @@ tox:
 clean:
 	rm -rf build; \
 	rm -rf dist; \
-	rm -rf UnleashClient.egg-info;
+	rm -rf ct_unleash.egg-info; rm -rf ct_unleash.egg-info;
 
 build-package:
 	python -m build

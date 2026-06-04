@@ -2,6 +2,12 @@ import json
 
 import responses
 
+from ct_unleash.constants import (
+    CLIENT_SPEC_VERSION,
+    METRICS_URL,
+)
+from ct_unleash.engine import UnleashEngine
+from ct_unleash.periodic_tasks import aggregate_and_send_metrics
 from tests.utilities.testing_constants import (
     APP_NAME,
     CONNECTION_ID,
@@ -11,12 +17,6 @@ from tests.utilities.testing_constants import (
     REQUEST_TIMEOUT,
     URL,
 )
-from UnleashClient.constants import (
-    CLIENT_SPEC_VERSION,
-    METRICS_URL,
-)
-from UnleashClient.engine import UnleashEngine
-from UnleashClient.periodic_tasks import aggregate_and_send_metrics
 
 FULL_METRICS_URL = URL + METRICS_URL
 print(FULL_METRICS_URL)

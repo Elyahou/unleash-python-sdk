@@ -20,7 +20,7 @@ import time
 
 from yggdrasil_engine.engine import UnleashEngine as YggEngine
 
-from UnleashClient.engine import UnleashEngine as EmbeddedEngine
+from ct_unleash.engine import UnleashEngine as EmbeddedEngine
 
 # Mirrors UnleashClient._safe_context: standard top-level fields, everything
 # else stringified under "properties".

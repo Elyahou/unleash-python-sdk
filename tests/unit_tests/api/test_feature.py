@@ -3,6 +3,8 @@ import json
 import responses
 from pytest import mark, param
 
+from ct_unleash.api import get_feature_toggles
+from ct_unleash.constants import FEATURES_URL
 from tests.utilities.mocks.mock_features import (
     MOCK_FEATURE_RESPONSE,
     MOCK_FEATURE_RESPONSE_PROJECT,
@@ -19,8 +21,6 @@ from tests.utilities.testing_constants import (
     REQUEST_TIMEOUT,
     URL,
 )
-from UnleashClient.api import get_feature_toggles
-from UnleashClient.constants import FEATURES_URL
 
 FULL_FEATURE_URL = URL + FEATURES_URL
 

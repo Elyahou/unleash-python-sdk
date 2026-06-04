@@ -6,7 +6,7 @@ from typing import Any, Optional
 import requests
 from fcache.cache import FileCache as _FileCache
 
-from UnleashClient.constants import FEATURES_URL, REQUEST_TIMEOUT
+from ct_unleash.constants import FEATURES_URL, REQUEST_TIMEOUT
 
 
 class BaseCache(abc.ABC):
@@ -59,8 +59,8 @@ class FileCache(BaseCache):
     .. code-block:: python
 
         from pathlib import Path
-        from UnleashClient.cache import FileCache
-        from UnleashClient import UnleashClient
+        from ct_unleash.cache import FileCache
+        from ct_unleash import UnleashClient
 
         my_cache = FileCache("HAMSTER_API")
         my_cache.bootstrap_from_file(Path("/path/to/boostrap.json"))

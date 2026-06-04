@@ -3,7 +3,7 @@ import logging
 import sys
 import time
 
-from UnleashClient import UnleashClient
+from ct_unleash import UnleashClient
 
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
