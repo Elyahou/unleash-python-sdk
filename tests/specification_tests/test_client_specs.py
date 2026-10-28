@@ -1,6 +1,4 @@
 import json
-import platform
-import sys
 import uuid
 from os import path
 
@@ -9,6 +7,7 @@ import pytest
 from tests.utilities.testing_constants import APP_NAME, URL
 from UnleashClient import UnleashClient
 from UnleashClient.cache import FileCache
+from UnleashClient.config import IdentityOptions, MetricsOptions
 
 CLIENT_SPEC_PATH = "tests/specification_tests/client-specification/specifications"
 
@@ -43,11 +42,11 @@ def get_client(state, test_context=None, cache_directory=None):
     unleash_client = UnleashClient(
         url=URL,
         app_name=APP_NAME,
-        instance_id="pytest_%s" % uuid.uuid4(),
-        disable_metrics=True,
-        disable_registration=True,
+        identity=IdentityOptions(
+            environment=env, instance_id="pytest_%s" % uuid.uuid4()
+        ),
+        metrics=MetricsOptions(disabled=True, disable_registration=True),
         cache=cache,
-        environment=env,
     )
 
     unleash_client.initialize_client(fetch_toggles=False)
@@ -76,10 +75,6 @@ except FileNotFoundError:
     raise
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 9) and platform.system() == "Windows",
-    reason="Requires Python >= 3.9 on Windows",
-)
 @pytest.mark.parametrize("spec", TEST_DATA, ids=TEST_NAMES)
 def test_spec(spec, tmp_path):
     state, test_data, is_variant_test = spec

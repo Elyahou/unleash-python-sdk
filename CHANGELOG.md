@@ -1,8 +1,13 @@
-## v7.0.0
-* (Major): Dropped Python 3.8 and 3.9 support.
+
+## Unreleased (v7.0.0)
+* (Major): Python 3.10 or newer is required. Support for Python 3.8 and 3.9 has been dropped.
+* (Major): `UnleashClient` and `AsyncUnleashClient` take their settings as option groups: `identity=IdentityOptions(...)`, `http=HttpOptions(...)`, `mode=PollingOptions(...)` or `mode=StreamingOptions()`, and `metrics=MetricsOptions(...)`. Every argument after `url` and `app_name` is keyword-only. `ExperimentalMode` has been removed. See the [v7 migration guide](./v7_MIGRATION_GUIDE.md).
+* (Major): Settings can no longer be changed on an existing client. The `unleash_*` settings properties and the `strategy_mapping` and `connector_mode` properties have been removed, together with their setters.
+* (Major): The API token is passed as `api_key="<API token>"`. An `Authorization` header in `HttpOptions.headers` raises `ValueError`.
 * (Major): Upgraded to yggdrasil-engine 3, new engine built with PyO3 for better performance.
 * (Minor): `feature_definitions()` reports whether each feature is enabled in the environment.
 * (Minor): New `evaluate_all_toggles()` evaluates every feature for one context in a single call, without recording usage metrics.
+* (Minor): New `FETCH_COMPLETED` event, emitted after every feature fetch with how it ended: `CHANGED`, `NOT_CHANGED`, `UNAUTHORIZED`, `RATE_LIMITED`, `UNAVAILABLE` or `INVALID_RESPONSE`.
 
 ## v6.9.1
 * (Bugfix): Capped yggdrasil-engine below 3.0.0 so installs don't pick up a breaking major version.
